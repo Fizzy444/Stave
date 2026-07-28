@@ -1,0 +1,91 @@
+:root {
+  /* Ultra-Premium Glass/Zinc Palette using oklch */
+  --bg-app: transparent;
+  --bg-base: oklch(0.15 0 0); /* deep zinc for rounded corners */
+  --bg-sidebar: oklch(0.20 0 0 / 0.5); /* translucent */
+  --bg-main: oklch(0.18 0 0);
+  --bg-player: oklch(0.16 0 0 / 0.85);
+  --bg-card: oklch(0.24 0 0);
+  --bg-modal: oklch(0.22 0 0);
+
+  /* Surfaces & Hover States */
+  --surface-hover: oklch(1 0 0 / 0.06);
+  --surface-active: oklch(1 0 0 / 0.1);
+  --surface-selected: oklch(1 0 0 / 0.12);
+
+  /* Borders & Dividers */
+  --divider: oklch(1 0 0 / 0.08);
+  --divider-subtle: oklch(1 0 0 / 0.04);
+  --divider-strong: oklch(1 0 0 / 0.15);
+
+  /* Typography Colors */
+  --text-primary: oklch(0.95 0 0);
+  --text-secondary: oklch(0.70 0 0);
+  --text-tertiary: oklch(0.55 0 0);
+  --text-quaternary: oklch(0.40 0 0);
+
+  /* Dynamic Accent - Default to a vivid blue/purple */
+  --accent: oklch(0.65 0.25 260);
+  --accent-hover: oklch(0.75 0.25 260);
+  --accent-subtle: oklch(0.65 0.25 260 / 0.15);
+
+  /* Font Stack */
+  --font-system: -apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', 'Inter', 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, Menlo, Consolas, monospace;
+
+  /* Radii */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 120ms;
+  --dur-normal: 200ms;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-system);
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+/* Thin Native-feeling Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
