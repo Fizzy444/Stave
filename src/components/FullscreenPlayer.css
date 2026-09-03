@@ -1,0 +1,330 @@
+.fullscreen-player-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 300ms var(--ease);
+}
+
+.fullscreen-player-overlay.visible {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.fullscreen-bg {
+  position: absolute;
+  top: -10%;
+  left: -10%;
+  right: -10%;
+  bottom: -10%;
+  background-size: cover;
+  background-position: center;
+  filter: blur(80px) saturate(1.5);
+  transform: scale(1.1);
+  z-index: -2;
+}
+
+.fullscreen-bg-dim {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: -1;
+}
+
+.fullscreen-close {
+  position: absolute;
+  top: 48px;
+  left: 48px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+  z-index: 10;
+}
+
+.fullscreen-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.05);
+}
+
+.fullscreen-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 80px;
+  width: 100%;
+  max-width: 1200px;
+  padding: 0 64px;
+}
+
+.fullscreen-art-container {
+  flex-shrink: 0;
+  width: 380px;
+  height: 380px;
+  flex-shrink: 0;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+  border-radius: 8px;
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  background: var(--bg-card);
+}
+
+.fullscreen-art-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fullscreen-art-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.fullscreen-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.fullscreen-title {
+  font-size: 3.5rem;
+  font-weight: 800;
+  color: white;
+  margin: 0 0 16px 0;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.fullscreen-artist {
+  font-size: 1.8rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0 0 8px 0;
+}
+
+.fullscreen-album {
+  font-size: 1.2rem;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* Fullscreen Lyrics CSS */
+.fullscreen-content.has-lyrics {
+  align-items: center;
+  justify-content: center;
+  gap: 60px;
+}
+
+.fullscreen-left-col {
+  display: contents;
+}
+
+.fullscreen-content.has-lyrics .fullscreen-left-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 400px;
+  width: 400px;
+  transition: transform 0.4s var(--ease);
+}
+
+.fullscreen-content.has-lyrics .fullscreen-art-container {
+  width: 280px;
+  height: 280px;
+  flex-shrink: 0;
+}
+
+.fullscreen-content.has-lyrics .fullscreen-info {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin-top: 24px;
+  width: 100%;
+}
+
+.fullscreen-content.has-lyrics .fullscreen-title {
+  font-size: 2rem;
+  margin-bottom: 8px;
+}
+
+.fullscreen-content.has-lyrics .fullscreen-artist {
+  font-size: 1.2rem;
+}
+
+.fs-lyrics-container {
+  flex: 1;
+  min-width: 0;
+  height: 600px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+}
+
+.fs-lyrics-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 50% 20px;
+  /* hide scrollbar */
+  scrollbar-width: none;
+}
+.fs-lyrics-scroll-area::-webkit-scrollbar {
+  display: none;
+}
+
+.fs-lyric-item {
+  font-size: 2.8rem;
+  font-weight: 700;
+  color: white;
+  opacity: max(0.1, calc(0.6 - var(--distance, 0) * 0.15));
+  margin-bottom: 24px;
+  transition: color 0.6s var(--ease), transform 0.6s var(--ease), filter 0.6s var(--ease), opacity 0.6s var(--ease);
+  cursor: pointer;
+  transform-origin: left center;
+  filter: blur(calc(var(--distance, 0) * 1.5px));
+  overflow-wrap: break-word;
+}
+
+.fs-lyric-item:hover {
+  opacity: 0.8;
+  filter: blur(0px);
+}
+
+.fs-lyric-item.is-active {
+  opacity: 1;
+  transform: scale(1.05);
+  filter: blur(0px);
+}
+
+.is-waiting .fs-lyric-item {
+  opacity: 1;
+  filter: blur(0px);
+  transform: scale(1);
+}
+
+.fs-lyrics-plain {
+  flex: 1;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 1.5rem;
+  line-height: 1.8;
+  padding: 20px;
+}
+
+.fs-lyrics-loading, .fs-lyrics-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+}
+
+.fs-lyrics-empty h2 {
+  font-size: 2rem;
+  margin-bottom: 12px;
+  color: white;
+}
+
+.fs-lyrics-empty p {
+  font-size: 1.2rem;
+}
+
+.fullscreen-toggle-lyrics {
+  position: absolute;
+  bottom: 24px;
+  right: 32px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+  z-index: 10;
+}
+
+.fullscreen-toggle-lyrics:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.05);
+}
+
+.fullscreen-toggle-lyrics.active {
+  background: white;
+  color: black;
+}
+
+.fullscreen-controls {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  z-index: 10;
+}
+
+.fullscreen-control-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.fullscreen-control-btn:hover {
+  color: white;
+  transform: scale(1.1);
+}
+
+.fullscreen-control-btn.play-pause {
+  background: white;
+  color: black;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+}
+
+.fullscreen-control-btn.play-pause:hover {
+  background: #f0f0f0;
+  transform: scale(1.05);
+}
