@@ -55,6 +55,7 @@ function App() {
 
   useEffect(() => {
     useLibraryStore.getState().initArtworkPath();
+    useLibraryStore.getState().loadTracks();
     
     // Check initial maximize state
     getCurrentWindow().isMaximized().then(setIsMaximized);

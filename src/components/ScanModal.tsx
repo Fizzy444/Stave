@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLibraryStore } from '../store/library';
 import { X, CircleNotch, FolderOpen } from '@phosphor-icons/react';
 import { open } from '@tauri-apps/plugin-dialog';
+import { audioDir } from '@tauri-apps/api/path';
 
 interface ScanModalProps {
   isOpen: boolean;
@@ -10,7 +11,14 @@ interface ScanModalProps {
 
 export function ScanModal({ isOpen, onClose }: ScanModalProps) {
   const [folderPath, setFolderPath] = useState('');
+  const [presetPaths, setPresetPaths] = useState<string[]>(['D:\\Music']);
   const { scanFolder, isScanning, tracks } = useLibraryStore();
+
+  useEffect(() => {
+    audioDir().then((dir) => {
+      setPresetPaths([dir, 'D:\\Music']);
+    }).catch(console.error);
+  }, []);
 
   if (!isOpen) return null;
 
@@ -34,11 +42,6 @@ export function ScanModal({ isOpen, onClose }: ScanModalProps) {
       console.error('Failed to open dialog:', err);
     }
   };
-
-  const presetPaths = [
-    'C:\\Users\\Mithun\\Music',
-    'D:\\Music',
-  ];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
