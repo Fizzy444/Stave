@@ -115,10 +115,6 @@ function App() {
       <header 
         data-tauri-drag-region 
         className="app-header"
-        onMouseDown={(e) => {
-          if ((e.target as HTMLElement).closest('button, input, .window-btn')) return;
-          getCurrentWindow().startDragging();
-        }}
       >
         <div data-tauri-drag-region className="brand-section">
           <h1 className="brand-title" data-tauri-drag-region>Stave</h1>

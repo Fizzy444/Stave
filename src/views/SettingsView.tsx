@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { CircleNotch, DownloadSimple, CheckCircle, Palette, Faders, Wrench, MusicNotes, ArrowClockwise, Lightning } from '@phosphor-icons/react';
+import { check } from '@tauri-apps/plugin-updater';
+import { ask, message } from '@tauri-apps/plugin-dialog';
+import { CircleNotch, DownloadSimple, CheckCircle, Palette, Faders, Wrench, MusicNotes, ArrowClockwise, Lightning, CloudArrowDown } from '@phosphor-icons/react';
 import { EqPanel } from '../components/EqPanel';
 import { useThemeStore } from '../store/theme';
 
@@ -121,7 +123,7 @@ export function SettingsView() {
   const [toolsInstalled, setToolsInstalled] = useState<boolean | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-  const [activeCategory, setActiveCategory] = useState<'appearance' | 'audio' | 'tools' | 'library'>('appearance');
+  const [activeCategory, setActiveCategory] = useState<'appearance' | 'audio' | 'tools' | 'library' | 'updates'>('appearance');
   const [isFixing, setIsFixing] = useState(false);
   const [fixResult, setFixResult] = useState<string | null>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
@@ -169,6 +171,31 @@ export function SettingsView() {
     }
   };
 
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const handleCheckUpdate = async () => {
+    setIsCheckingUpdate(true);
+    try {
+      const update = await check();
+      if (update) {
+        const yes = await ask(`Update to ${update.version} is available!\n\nRelease notes:\n${update.body}\n\nDownload and install now?`, {
+          title: 'Update Available',
+          kind: 'info',
+        });
+        if (yes) {
+          await update.downloadAndInstall();
+          await message('Update installed successfully. Please restart Stave to apply changes.', { title: 'Update Complete', kind: 'info' });
+        }
+      } else {
+        await message('You are on the latest version.', { title: 'No Updates', kind: 'info' });
+      }
+    } catch (e: any) {
+      console.error(e);
+      await message(`Failed to check for updates: ${e}`, { title: 'Error', kind: 'error' });
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
   const presetColors = [
     { color: '#ff5500', name: 'Orange' },
     { color: '#10b981', name: 'Green' },
@@ -204,6 +231,7 @@ export function SettingsView() {
           <NavItem icon={<Faders size={16} />} label="Audio" active={activeCategory === 'audio'} onClick={() => setActiveCategory('audio')} />
           <NavItem icon={<MusicNotes size={16} />} label="Library" active={activeCategory === 'library'} onClick={() => setActiveCategory('library')} />
           <NavItem icon={<Wrench size={16} />} label="External Tools" active={activeCategory === 'tools'} onClick={() => setActiveCategory('tools')} />
+          <NavItem icon={<CloudArrowDown size={16} />} label="Updates" active={activeCategory === 'updates'} onClick={() => setActiveCategory('updates')} />
         </div>
 
         {/* Settings Content */}
@@ -495,6 +523,43 @@ export function SettingsView() {
               <div style={{ fontSize: '12px', color: 'var(--text-quaternary)', lineHeight: 1.5 }}>
                 Stave uses yt-dlp and FFmpeg to download and process audio from YouTube. These tools are stored locally in the app's data directory.
               </div>
+            </div>
+          )}
+
+          {activeCategory === 'updates' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '720px', width: '100%' }}>
+              <SectionTitle icon={<CloudArrowDown size={18} weight="duotone" />} title="Updates" />
+
+              <SettingCard>
+                <SettingRow
+                  label="In-App Updates"
+                  description="Check GitHub for the latest version of Stave."
+                >
+                  <button
+                    className="btn-primary"
+                    onClick={handleCheckUpdate}
+                    disabled={isCheckingUpdate}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '0 16px',
+                      height: '32px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      opacity: isCheckingUpdate ? 0.6 : 1,
+                      cursor: isCheckingUpdate ? 'default' : 'pointer',
+                    }}
+                  >
+                    {isCheckingUpdate ? (
+                      <><CircleNotch size={14} className="spinning-icon" /> Checking...</>
+                    ) : (
+                      <><CloudArrowDown size={14} weight="bold" /> Check for Updates</>
+                    )}
+                  </button>
+                </SettingRow>
+              </SettingCard>
             </div>
           )}
 

@@ -33,5 +33,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Fizzy444/Stave/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM2MUEwQUQwQTEzRDlGMzAKUldRd256MmgwQW9heHA1ZVZ3NGpwNXo2VHFFakE3c2ZkZW5YbHU4cG1FeDcvR1NCUE9TdFpKcSsK"
+    }
   }
 }
