@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { usePlayerStore } from '../store/player';
 import { parseLrc, LyricLine } from '../lyrics/parseLrc';
 import { engine } from '../audio/engine';
-import { CircleNotch } from '@phosphor-icons/react';
+import { CircleNotch, Plus, Minus } from '@phosphor-icons/react';
 import { Track } from '../store/library';
 
 interface Props {
@@ -17,6 +17,8 @@ export function FullscreenLyrics({ track }: Props) {
   const [isLoading, setIsLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
 
+  const [offsetMs, setOffsetMs] = useState(0);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const isManualScroll = useRef(false);
   const scrollTimeout = useRef<number | undefined>(undefined);
@@ -26,6 +28,7 @@ export function FullscreenLyrics({ track }: Props) {
     setIsLoading(true);
     setLyrics(null);
     setPlainText(null);
+    setOffsetMs(0); // Reset offset on track change
 
     invoke<{ synced: string | null; plain: string | null }>('fetch_lyrics', {
       trackId: track.id,
@@ -57,8 +60,10 @@ export function FullscreenLyrics({ track }: Props) {
     if (!lyrics || lyrics.length === 0) return;
 
     let newActive = -1;
+    const effectivePosition = position - (offsetMs / 1000);
+    
     for (let i = 0; i < lyrics.length; i++) {
-      if (position >= lyrics[i].time) {
+      if (effectivePosition >= lyrics[i].time) {
         newActive = i;
       } else {
         break;
@@ -95,6 +100,47 @@ export function FullscreenLyrics({ track }: Props) {
       {isLoading && (
         <div className="fs-lyrics-loading">
           <CircleNotch size={48} className="spinning-icon" />
+        </div>
+      )}
+
+      {!isLoading && lyrics && lyrics.length > 0 && (
+        <div 
+          className="lyrics-offset-controls" 
+          style={{
+            position: 'absolute',
+            top: 24,
+            right: 24,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            background: 'rgba(0,0,0,0.4)',
+            backdropFilter: 'blur(10px)',
+            padding: '6px 12px',
+            borderRadius: 16,
+            zIndex: 10,
+            color: 'var(--text-secondary)',
+            fontSize: 12,
+            fontFamily: 'var(--font-mono)'
+          }}
+        >
+          <span style={{ marginRight: 4, color: 'var(--text-tertiary)', textTransform: 'uppercase', fontSize: 10, fontWeight: 600, letterSpacing: 1 }}>Sync</span>
+          <button 
+            onClick={() => setOffsetMs(o => o - 500)} 
+            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', display: 'flex' }}
+            title="Delay Lyrics 0.5s"
+          >
+            <Minus size={14} />
+          </button>
+          <span style={{ minWidth: 40, textAlign: 'center' }}>
+            {offsetMs > 0 ? '+' : ''}{offsetMs / 1000}s
+          </span>
+          <button 
+            onClick={() => setOffsetMs(o => o + 500)} 
+            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', display: 'flex' }}
+            title="Advance Lyrics 0.5s"
+          >
+            <Plus size={14} />
+          </button>
         </div>
       )}
 
