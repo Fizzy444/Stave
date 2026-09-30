@@ -266,15 +266,34 @@ export function PlayerBar({ activePanel, onTogglePanel, onOpenFullscreen }: Play
           <button className="btn-icon" style={{ width: 26, height: 26 }} onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'}>
             {renderVolumeIcon()}
           </button>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={isMuted ? 0 : volume}
-            onChange={(e) => setVolume(Number(e.target.value))}
+          <div
+            className="slider-container"
             style={{ width: 72 }}
-          />
+            onPointerDown={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const updateVolume = (clientX: number) => {
+                const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+                setVolume(pos);
+              };
+              updateVolume(e.clientX);
+
+              const handlePointerMove = (ev: PointerEvent) => {
+                updateVolume(ev.clientX);
+              };
+              const handlePointerUp = () => {
+                window.removeEventListener('pointermove', handlePointerMove);
+                window.removeEventListener('pointerup', handlePointerUp);
+              };
+              
+              window.addEventListener('pointermove', handlePointerMove);
+              window.addEventListener('pointerup', handlePointerUp);
+            }}
+          >
+            <div className="slider-track">
+              <div className="slider-fill" style={{ width: `${(isMuted ? 0 : volume) * 100}%` }} />
+            </div>
+            <div className="slider-thumb" style={{ left: `${(isMuted ? 0 : volume) * 100}%`, transform: 'translateX(-50%)' }} />
+          </div>
         </div>
       </div>
     </footer>
