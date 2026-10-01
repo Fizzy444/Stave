@@ -10,7 +10,6 @@
   background-color: var(--bg-base);
   overflow: hidden;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--divider-strong);
   box-sizing: border-box;
 }
 
