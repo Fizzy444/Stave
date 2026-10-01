@@ -4,7 +4,7 @@ import { TrackRow } from '../components/TrackRow';
 import { TagEditor } from '../components/TagEditor';
 import { useMemo, useState, useEffect } from 'react';
 
-const CACHE_KEY = 'stave_artist_images_v4';
+const CACHE_KEY = 'stave_artist_images_v5';
 let artistImageCache: Record<string, string> = {};
 try {
   artistImageCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
@@ -13,22 +13,24 @@ try {
 const fetchArtistImage = async (artistName: string) => {
   if (artistImageCache[artistName]) return artistImageCache[artistName];
   try {
-    // Step 1: Find the actual artist ID
     const searchRes = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(artistName)}&entity=musicArtist&limit=1`);
     const searchData = await searchRes.json();
     
     if (searchData.results && searchData.results.length > 0) {
       const artistId = searchData.results[0].artistId;
       
-      // Step 2: Lookup an album explicitly by that exact artist ID
-      const lookupRes = await fetch(`https://itunes.apple.com/lookup?id=${artistId}&entity=album&limit=1`);
+      const lookupRes = await fetch(`https://itunes.apple.com/lookup?id=${artistId}&entity=album&limit=10`);
       const lookupData = await lookupRes.json();
       
-      // The first result is the artist, the second result is the album
-      const albumResult = lookupData.results.find((r: any) => r.wrapperType === 'collection');
+      const albums = lookupData.results.filter((r: any) => r.wrapperType === 'collection');
       
-      if (albumResult && albumResult.artworkUrl100) {
-        const url = albumResult.artworkUrl100.replace('100x100bb', '600x600bb');
+      let bestAlbum = albums.find((a: any) => a.artistName.toLowerCase() === artistName.toLowerCase());
+      if (!bestAlbum && albums.length > 0) {
+        bestAlbum = albums[0];
+      }
+      
+      if (bestAlbum && bestAlbum.artworkUrl100) {
+        const url = bestAlbum.artworkUrl100.replace('100x100bb', '600x600bb');
         artistImageCache[artistName] = url;
         localStorage.setItem(CACHE_KEY, JSON.stringify(artistImageCache));
         return url;

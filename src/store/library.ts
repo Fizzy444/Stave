@@ -7,7 +7,10 @@ export interface Track {
     path: string;
     title: string | null;
     artist: string | null;
+    album_artist: string | null;
     album: string | null;
+    track_no: number | null;
+    disc_no: number | null;
     duration_ms: number | null;
     art_hash: string | null;
     accent: string | null;
@@ -24,6 +27,7 @@ interface LibraryState {
     initArtworkPath: () => Promise<void>;
     loadTracks: () => Promise<void>;
     scanFolder: (path: string) => Promise<void>;
+    rescanLibrary: () => Promise<void>;
     toggleFavorite: (trackId: number, favorite: boolean) => Promise<void>;
 }
 
@@ -60,6 +64,18 @@ export const useLibraryStore = create<LibraryState>((set) => ({
             set({ tracks, isScanning: false });
         } catch (e) {
             console.error("Failed to scan folder", e);
+            set({ isScanning: false });
+        }
+    },
+    
+    rescanLibrary: async () => {
+        set({ isScanning: true });
+        try {
+            await invoke('rescan_library');
+            const tracks = await invoke<Track[]>('get_tracks');
+            set({ tracks, isScanning: false });
+        } catch (e) {
+            console.error("Failed to rescan library", e);
             set({ isScanning: false });
         }
     },

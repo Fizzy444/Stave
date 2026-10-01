@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { check } from '@tauri-apps/plugin-updater';
 import { ask, message } from '@tauri-apps/plugin-dialog';
-import { CircleNotch, DownloadSimple, CheckCircle, Palette, Faders, Wrench, MusicNotes, ArrowClockwise, Lightning, CloudArrowDown } from '@phosphor-icons/react';
+import { CircleNotch, DownloadSimple, CheckCircle, Palette, Faders, Wrench, MusicNotes, ArrowClockwise, Lightning, CloudArrowDown, Keyboard } from '@phosphor-icons/react';
 import { EqPanel } from '../components/EqPanel';
 import { useThemeStore } from '../store/theme';
 
@@ -123,7 +123,7 @@ export function SettingsView() {
   const [toolsInstalled, setToolsInstalled] = useState<boolean | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-  const [activeCategory, setActiveCategory] = useState<'appearance' | 'audio' | 'tools' | 'library' | 'updates'>('appearance');
+  const [activeCategory, setActiveCategory] = useState<'appearance' | 'audio' | 'tools' | 'library' | 'updates' | 'shortcuts'>('appearance');
   const [isFixing, setIsFixing] = useState(false);
   const [fixResult, setFixResult] = useState<string | null>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
@@ -230,6 +230,7 @@ export function SettingsView() {
           <NavItem icon={<Palette size={16} />} label="Appearance" active={activeCategory === 'appearance'} onClick={() => setActiveCategory('appearance')} />
           <NavItem icon={<Faders size={16} />} label="Audio" active={activeCategory === 'audio'} onClick={() => setActiveCategory('audio')} />
           <NavItem icon={<MusicNotes size={16} />} label="Library" active={activeCategory === 'library'} onClick={() => setActiveCategory('library')} />
+          <NavItem icon={<Keyboard size={16} />} label="Shortcuts" active={activeCategory === 'shortcuts'} onClick={() => setActiveCategory('shortcuts')} />
           <NavItem icon={<Wrench size={16} />} label="External Tools" active={activeCategory === 'tools'} onClick={() => setActiveCategory('tools')} />
           <NavItem icon={<CloudArrowDown size={16} />} label="Updates" active={activeCategory === 'updates'} onClick={() => setActiveCategory('updates')} />
         </div>
@@ -469,6 +470,48 @@ export function SettingsView() {
                     </div>
                   </>
                 )}
+              </SettingCard>
+            </div>
+          )}
+
+          {activeCategory === 'shortcuts' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '720px', width: '100%' }}>
+              <SectionTitle icon={<Keyboard size={18} weight="duotone" />} title="Keyboard Shortcuts" />
+
+              <SettingCard>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                  <SettingRow label="Play / Pause">
+                    <kbd style={{ background: 'oklch(0.2 0 0)', border: '1px solid var(--divider)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-secondary)' }}>Space</kbd>
+                  </SettingRow>
+                  <Divider />
+                  <SettingRow label="Next Track">
+                    <kbd style={{ background: 'oklch(0.2 0 0)', border: '1px solid var(--divider)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-secondary)' }}>Right Arrow</kbd>
+                  </SettingRow>
+                  <Divider />
+                  <SettingRow label="Previous Track">
+                    <kbd style={{ background: 'oklch(0.2 0 0)', border: '1px solid var(--divider)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-secondary)' }}>Left Arrow</kbd>
+                  </SettingRow>
+                  <Divider />
+                  <SettingRow label="Volume Up">
+                    <kbd style={{ background: 'oklch(0.2 0 0)', border: '1px solid var(--divider)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-secondary)' }}>Up Arrow</kbd>
+                  </SettingRow>
+                  <Divider />
+                  <SettingRow label="Volume Down">
+                    <kbd style={{ background: 'oklch(0.2 0 0)', border: '1px solid var(--divider)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-secondary)' }}>Down Arrow</kbd>
+                  </SettingRow>
+                  <Divider />
+                  <SettingRow label="Toggle Fullscreen">
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                       <kbd style={{ background: 'oklch(0.2 0 0)', border: '1px solid var(--divider)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-secondary)' }}>F</kbd>
+                       <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>or</span>
+                       <kbd style={{ background: 'oklch(0.2 0 0)', border: '1px solid var(--divider)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-secondary)' }}>F11</kbd>
+                    </div>
+                  </SettingRow>
+                  <Divider />
+                  <SettingRow label="Close Fullscreen">
+                    <kbd style={{ background: 'oklch(0.2 0 0)', border: '1px solid var(--divider)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-secondary)' }}>Esc</kbd>
+                  </SettingRow>
+                </div>
               </SettingCard>
             </div>
           )}

@@ -11,7 +11,10 @@ pub struct Track {
     pub path: String,
     pub title: Option<String>,
     pub artist: Option<String>,
+    pub album_artist: Option<String>,
     pub album: Option<String>,
+    pub track_no: Option<u32>,
+    pub disc_no: Option<u32>,
     pub duration_ms: Option<u64>,
     pub art_hash: Option<String>,
     pub accent: Option<String>,
@@ -44,6 +47,19 @@ pub async fn scan_library(
 ) -> Result<(), String> {
     let db_clone = db.inner().clone();
     let app_clone = app.clone();
+
+    {
+        let conn = db_clone.lock().unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO folders (path, added_at) VALUES (?, ?)",
+            rusqlite::params![path.clone(), now as i64],
+        );
+    }
+
     tauri::async_runtime::spawn_blocking(move || {
         let conn = db_clone.lock().unwrap();
         scanner::scan_folder(&PathBuf::from(path), &app_clone, &conn);
@@ -54,9 +70,35 @@ pub async fn scan_library(
 }
 
 #[tauri::command]
+pub async fn rescan_library(
+    app: AppHandle,
+    db: State<'_, Arc<Mutex<Connection>>>,
+) -> Result<(), String> {
+    let folders: Vec<String> = {
+        let conn = db.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT path FROM folders").unwrap();
+        let iter = stmt.query_map([], |row| row.get(0)).unwrap();
+        iter.filter_map(|r| r.ok()).collect()
+    };
+    
+    let db_clone = db.inner().clone();
+    let app_clone = app.clone();
+    
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = db_clone.lock().unwrap();
+        for path in folders {
+            scanner::scan_folder(&PathBuf::from(path), &app_clone, &conn);
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_tracks(db: State<'_, Arc<Mutex<Connection>>>) -> Result<Vec<Track>, String> {
     let conn = db.lock().unwrap();
-    let mut stmt = conn.prepare_cached("SELECT id, path, title, artist, album, duration_ms, art_hash, accent, mtime, play_count, last_played, favorite FROM tracks").unwrap();
+    let mut stmt = conn.prepare_cached("SELECT id, path, title, artist, album_artist, album, track_no, disc_no, duration_ms, art_hash, accent, mtime, play_count, last_played, favorite FROM tracks").unwrap();
     let iter = stmt
         .query_map([], |row| {
             Ok(Track {
@@ -64,14 +106,17 @@ pub fn get_tracks(db: State<'_, Arc<Mutex<Connection>>>) -> Result<Vec<Track>, S
                 path: row.get(1)?,
                 title: row.get(2)?,
                 artist: row.get(3)?,
-                album: row.get(4)?,
-                duration_ms: row.get::<_, Option<i64>>(5)?.map(|v| v as u64),
-                art_hash: row.get(6)?,
-                accent: row.get(7)?,
-                mtime: row.get::<_, Option<i64>>(8)?.map(|v| v as u64),
-                play_count: row.get::<_, Option<i64>>(9)?.map(|v| v as u64),
-                last_played: row.get::<_, Option<i64>>(10)?.map(|v| v as u64),
-                favorite: row.get::<_, i64>(11).unwrap_or(0) > 0,
+                album_artist: row.get(4)?,
+                album: row.get(5)?,
+                track_no: row.get(6)?,
+                disc_no: row.get(7)?,
+                duration_ms: row.get::<_, Option<i64>>(8)?.map(|v| v as u64),
+                art_hash: row.get(9)?,
+                accent: row.get(10)?,
+                mtime: row.get::<_, Option<i64>>(11)?.map(|v| v as u64),
+                play_count: row.get::<_, Option<i64>>(12)?.map(|v| v as u64),
+                last_played: row.get::<_, Option<i64>>(13)?.map(|v| v as u64),
+                favorite: row.get::<_, i64>(14).unwrap_or(0) > 0,
             })
         })
         .unwrap();

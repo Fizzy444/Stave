@@ -66,26 +66,26 @@
 }
 
 .fullscreen-content {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 0fr;
   align-items: center;
-  justify-content: center;
-  gap: 80px;
+  justify-items: center;
+  gap: 0px;
   width: 100%;
   max-width: 1200px;
   padding: 0 64px;
+  transition: grid-template-columns 0.4s var(--ease), gap 0.4s var(--ease);
 }
 
 .fullscreen-art-container {
-  flex-shrink: 0;
   width: 380px;
   height: 380px;
   flex-shrink: 0;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.4);
-  border-radius: 8px;
   border-radius: 12px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
   overflow: hidden;
   background: var(--bg-card);
+  transition: all 0.4s var(--ease);
 }
 
 .fullscreen-art-img {
@@ -107,7 +107,10 @@
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-width: 0;
+  width: 100%;
+  align-items: center;
+  text-align: center;
+  transition: all 0.4s var(--ease);
 }
 
 .fullscreen-title {
@@ -117,6 +120,7 @@
   margin: 0 0 16px 0;
   line-height: 1.1;
   letter-spacing: -0.02em;
+  transition: all 0.4s var(--ease);
 }
 
 .fullscreen-artist {
@@ -124,6 +128,7 @@
   font-weight: 500;
   color: rgba(255, 255, 255, 0.7);
   margin: 0 0 8px 0;
+  transition: all 0.4s var(--ease);
 }
 
 .fullscreen-album {
@@ -133,41 +138,36 @@
   margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.1em;
+  transition: all 0.4s var(--ease);
 }
 
 /* Fullscreen Lyrics CSS */
 .fullscreen-content.has-lyrics {
-  align-items: center;
-  justify-content: center;
+  grid-template-columns: 400px 1fr;
   gap: 60px;
 }
 
 .fullscreen-left-col {
-  display: contents;
-}
-
-.fullscreen-content.has-lyrics .fullscreen-left-col {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  flex: 0 0 400px;
-  width: 400px;
-  transition: transform 0.4s var(--ease);
+  width: 100%;
+  gap: 40px;
+  transition: all 0.4s var(--ease);
+}
+
+.fullscreen-content.has-lyrics .fullscreen-left-col {
+  gap: 24px;
 }
 
 .fullscreen-content.has-lyrics .fullscreen-art-container {
   width: 280px;
   height: 280px;
-  flex-shrink: 0;
 }
 
 .fullscreen-content.has-lyrics .fullscreen-info {
-  display: flex;
-  align-items: center;
-  text-align: center;
-  margin-top: 24px;
-  width: 100%;
+  margin-top: 0;
 }
 
 .fullscreen-content.has-lyrics .fullscreen-title {
@@ -177,6 +177,19 @@
 
 .fullscreen-content.has-lyrics .fullscreen-artist {
   font-size: 1.2rem;
+}
+
+.fullscreen-lyrics-wrapper {
+  opacity: 0;
+  overflow: hidden;
+  transition: opacity 0.4s var(--ease);
+  display: flex;
+  min-width: 0;
+  width: 100%;
+}
+
+.fullscreen-content.has-lyrics .fullscreen-lyrics-wrapper {
+  opacity: 1;
 }
 
 .fs-lyrics-container {
@@ -328,4 +341,65 @@
 .fullscreen-control-btn.play-pause:hover {
   background: #f0f0f0;
   transform: scale(1.05);
+}
+
+.fs-sync-controls {
+  position: absolute;
+  top: 64px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  padding: 6px 14px;
+  border-radius: 20px;
+  z-index: 20;
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.5;
+  transition: all 0.2s ease;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.fs-sync-controls:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.fs-sync-label {
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-right: 4px;
+}
+
+.fs-sync-btn {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.fs-sync-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.1);
+}
+
+.fs-sync-value {
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono, monospace);
 }

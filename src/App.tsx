@@ -7,6 +7,7 @@ import { LibraryView } from './views/LibraryView';
 import { HomeView } from './views/HomeView';
 import { SearchView } from './views/SearchView';
 import { PlaylistsView } from './views/PlaylistsView';
+import { AlbumsView } from './views/AlbumsView';
 
 const SettingsView = React.lazy(() => import('./views/SettingsView').then(m => ({ default: m.SettingsView })));
 const DownloadsView = React.lazy(() => import('./views/DownloadsView').then(m => ({ default: m.DownloadsView })));
@@ -29,7 +30,9 @@ import {
   Minus,
   SquaresFour,
   Playlist,
-  CircleNotch
+  CircleNotch,
+  ArrowsClockwise,
+  Disc
 } from '@phosphor-icons/react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useShallow } from 'zustand/react/shallow';
@@ -42,7 +45,7 @@ function App() {
   const { tracks } = useLibraryStore(useShallow(state => ({ tracks: state.tracks })));
   const { query, setQuery } = useSearchStore(useShallow(state => ({ query: state.query, setQuery: state.setQuery })));
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
-  const [activeMainView, setActiveMainView] = useState<'home' | 'library' | 'playlists' | 'settings' | 'downloads' | 'spotify'>('home');
+  const [activeMainView, setActiveMainView] = useState<'home' | 'library' | 'albums' | 'playlists' | 'settings' | 'downloads' | 'spotify'>('home');
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -68,6 +71,50 @@ function App() {
     return () => {
       unlisten.then(f => f());
     };
+  }, []);
+
+  // Global Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.repeat) return; // Prevent continuous triggering for some keys
+
+      const store = usePlayerStore.getState();
+      
+      switch (e.key) {
+        case ' ':
+          e.preventDefault();
+          if (store.isPlaying) store.pause();
+          else store.resume();
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          store.next();
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          store.prev();
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          store.setVolume(Math.min(1, store.volume + 0.1));
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          store.setVolume(Math.max(0, store.volume - 0.1));
+          break;
+        case 'f':
+        case 'F':
+        case 'F11':
+          e.preventDefault();
+          setIsFullscreenOpen(prev => !prev);
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Dynamic Theme Injection
@@ -167,6 +214,15 @@ function App() {
               <span className="sidebar-badge">{tracks.length}</span>
             </button>
             <button 
+              className={`sidebar-item ${activeMainView === 'albums' ? 'active' : ''}`}
+              onClick={() => handleViewChange('albums')}
+            >
+              <div className="sidebar-item-left">
+                <Disc size={16} weight="bold" />
+                <span>Albums</span>
+              </div>
+            </button>
+            <button 
               className={`sidebar-item ${activeMainView === 'playlists' ? 'active' : ''}`}
               onClick={() => handleViewChange('playlists')}
             >
@@ -205,6 +261,12 @@ function App() {
                 <span>Scan Folder</span>
               </div>
             </button>
+            <button className="sidebar-item" onClick={() => useLibraryStore.getState().rescanLibrary()}>
+              <div className="sidebar-item-left">
+                <ArrowsClockwise size={16} />
+                <span>Rescan Library</span>
+              </div>
+            </button>
             <button 
               className={`sidebar-item ${activeMainView === 'settings' ? 'active' : ''}`}
               onClick={() => handleViewChange('settings')}
@@ -223,6 +285,7 @@ function App() {
             {query ? <SearchView /> : (
               activeMainView === 'home' ? <HomeView /> : 
               activeMainView === 'library' ? <LibraryView /> : 
+              activeMainView === 'albums' ? <AlbumsView /> :
               activeMainView === 'playlists' ? <PlaylistsView /> : 
               activeMainView === 'downloads' ? <DownloadsView /> :
               activeMainView === 'spotify' ? <SpotifyImportView /> :

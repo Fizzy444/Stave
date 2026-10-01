@@ -27,6 +27,17 @@ export function FullscreenPlayer({ isOpen, onClose }: Props) {
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!render) return null;
 
   const currentTrack = currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
@@ -87,9 +98,9 @@ export function FullscreenPlayer({ isOpen, onClose }: Props) {
           </div>
         </div>
         
-        {showLyrics && (
+        <div className="fullscreen-lyrics-wrapper">
           <FullscreenLyrics track={freshCurrentTrack} />
-        )}
+        </div>
       </div>
 
       {/* Playback Controls */}
@@ -98,7 +109,7 @@ export function FullscreenPlayer({ isOpen, onClose }: Props) {
           <SkipBack size={28} weight="fill" />
         </button>
         <button className="fullscreen-control-btn play-pause" onClick={() => isPlaying ? pause() : resume()} title={isPlaying ? 'Pause' : 'Play'}>
-          {isPlaying ? <Pause size={32} weight="fill" /> : <Play size={32} weight="fill" style={{ marginLeft: '4px' }} />}
+          {isPlaying ? <Pause size={32} weight="fill" /> : <Play size={32} weight="fill" />}
         </button>
         <button className="fullscreen-control-btn" onClick={next} title="Next">
           <SkipForward size={28} weight="fill" />

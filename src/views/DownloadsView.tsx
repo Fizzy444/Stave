@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { MagnifyingGlass, DownloadSimple, CircleNotch } from '@phosphor-icons/react';
+import { MagnifyingGlass, DownloadSimple, CircleNotch, X, Trash } from '@phosphor-icons/react';
 
 type YTSearchResult = {
   id: string;
@@ -18,21 +18,38 @@ export function DownloadsView() {
   const [downloads, setDownloads] = useState<any[]>([]);
 
   useEffect(() => {
-    let interval: number;
-    if (activeTab === 'active' || activeTab === 'completed') {
-      const fetchDownloads = async () => {
-        try {
-          const res = await invoke<any[]>('get_downloads');
-          setDownloads(res);
-        } catch (e) {
-          console.error(e);
-        }
-      };
-      fetchDownloads();
-      interval = window.setInterval(fetchDownloads, 2000);
-    }
+    const fetchDownloads = async () => {
+      try {
+        const res = await invoke<any[]>('get_downloads');
+        setDownloads(res);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchDownloads();
+    const interval = window.setInterval(fetchDownloads, 2000);
     return () => clearInterval(interval);
-  }, [activeTab]);
+  }, []);
+
+  const activeDownloadsCount = downloads.filter(d => d.status === 'downloading' || d.status === 'queued').length;
+
+  const handleCancel = async (id: string) => {
+    try {
+      await invoke('cancel_download', { id });
+      setDownloads(downloads.map(d => d.id === id ? { ...d, status: 'cancelled' } : d));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleClearLog = async () => {
+    try {
+      await invoke('clear_downloads_log');
+      setDownloads(downloads.filter(d => d.status === 'downloading' || d.status === 'queued'));
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,7 +70,6 @@ export function DownloadsView() {
   const handleDownload = async (id: string, title: string, artist: string) => {
     try {
       await invoke('queue_download', { id, title, artist });
-      setActiveTab('active');
     } catch (e) {
       console.error(e);
     }
@@ -69,7 +85,7 @@ export function DownloadsView() {
         <div style={{ display: 'flex', gap: '32px', marginTop: '24px', borderBottom: '1px solid var(--divider)', padding: '0 32px' }}>
           {[
             { id: 'search', label: 'Search' },
-            { id: 'active', label: 'Active' },
+            { id: 'active', label: `Active${activeDownloadsCount > 0 ? ` (${activeDownloadsCount})` : ''}` },
             { id: 'completed', label: 'Completed' }
           ].map(tab => (
             <div 
@@ -171,13 +187,34 @@ export function DownloadsView() {
               </div>
             ) : (
               downloads.filter(d => d.status === 'downloading' || d.status === 'queued').map(res => (
-                <div key={res.id} style={{ padding: '16px', borderBottom: '1px solid var(--divider)' }}>
-                  <div style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: 500 }}>
-                    {res.title || res.id}
+                <div key={res.id} style={{ padding: '16px', borderBottom: '1px solid var(--divider)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: 500 }}>
+                      {res.title || res.id}
+                    </div>
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <CircleNotch size={14} className="spinning-icon" /> {res.status} &bull; {res.artist || 'Unknown Artist'}
+                    </div>
                   </div>
-                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <CircleNotch size={14} className="spinning-icon" /> {res.status} &bull; {res.artist || 'Unknown Artist'}
-                  </div>
+                  <button 
+                    onClick={() => handleCancel(res.id)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '32px',
+                      height: '32px',
+                      backgroundColor: 'transparent',
+                      color: 'var(--text-secondary)',
+                      border: '1px solid var(--divider)',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                    title="Cancel download"
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
               ))
             )}
@@ -186,21 +223,46 @@ export function DownloadsView() {
 
         {activeTab === 'completed' && (
           <div style={{ padding: '0 32px' }}>
-            {downloads.filter(d => d.status === 'completed' || d.status === 'failed').length === 0 ? (
+            {downloads.filter(d => d.status === 'completed' || d.status === 'failed' || d.status === 'cancelled').length === 0 ? (
               <div className="empty-library-state">
                 <div style={{ color: 'var(--text-secondary)' }}>No completed downloads.</div>
               </div>
             ) : (
-              downloads.filter(d => d.status === 'completed' || d.status === 'failed').map(res => (
-                <div key={res.id} style={{ padding: '16px', borderBottom: '1px solid var(--divider)' }}>
-                  <div style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: 500 }}>
-                    {res.title || res.id}
-                  </div>
-                  <div style={{ fontSize: '13px', color: res.status === 'failed' ? '#f87171' : 'var(--text-secondary)', marginTop: '4px' }}>
-                    {res.status === 'completed' ? 'Completed' : 'Failed'} &bull; {res.artist || 'Unknown Artist'}
-                  </div>
+              <>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px', marginTop: '16px' }}>
+                  <button 
+                    onClick={handleClearLog}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 16px',
+                      backgroundColor: 'rgba(255,255,255,0.05)',
+                      color: 'var(--text-secondary)',
+                      border: '1px solid var(--divider)',
+                      borderRadius: '4px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                  >
+                    <Trash size={16} />
+                    Clear Log
+                  </button>
                 </div>
-              ))
+                {downloads.filter(d => d.status === 'completed' || d.status === 'failed' || d.status === 'cancelled').map(res => (
+                  <div key={res.id} style={{ padding: '16px', borderBottom: '1px solid var(--divider)' }}>
+                    <div style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: 500 }}>
+                      {res.title || res.id}
+                    </div>
+                    <div style={{ fontSize: '13px', color: res.status === 'failed' ? '#f87171' : 'var(--text-secondary)', marginTop: '4px', textTransform: 'capitalize' }}>
+                      {res.status} &bull; {res.artist || 'Unknown Artist'}
+                    </div>
+                  </div>
+                ))}
+              </>
             )}
           </div>
         )}

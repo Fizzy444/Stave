@@ -168,7 +168,7 @@ export function PlayerBar({ activePanel, onTogglePanel, onOpenFullscreen }: Play
             onClick={isPlaying ? pause : resume}
             title={isPlaying ? 'Pause' : 'Play'}
           >
-            {isPlaying ? <Pause size={17} weight="fill" /> : <Play size={17} weight="fill" style={{ marginLeft: 2 }} />}
+            {isPlaying ? <Pause size={17} weight="fill" /> : <Play size={17} weight="fill" />}
           </button>
 
           <button className="btn-icon" onClick={next} title="Next">

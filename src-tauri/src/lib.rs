@@ -12,6 +12,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::sync::Mutex;
+use std::collections::HashMap;
 use tauri::http::header::{
     ACCEPT_RANGES, ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, RANGE,
 };
@@ -121,12 +122,15 @@ pub fn run() {
             commands::library::move_track,
             commands::library::delete_track,
             commands::library::toggle_favorite,
+            commands::library::rescan_library,
             commands::search::search_tracks,
             commands::tags::update_track_tags,
             commands::tags::auto_fix_metadata,
             commands::downloads::search_youtube,
             commands::downloads::queue_download,
+            commands::downloads::cancel_download,
             commands::downloads::get_downloads,
+            commands::downloads::clear_downloads_log,
             commands::spotify::fetch_spotify_playlist,
             commands::spotify::spotify_connect,
             lyrics::fetch_lyrics,
@@ -150,6 +154,7 @@ pub fn run() {
             let app_data_dir = app.path().app_data_dir().unwrap();
             let conn = db::init(app_data_dir).expect("Failed to initialize db");
             app.manage(std::sync::Arc::new(Mutex::new(conn)));
+            app.manage(std::sync::Arc::new(Mutex::new(HashMap::<String, tauri::async_runtime::JoinHandle<()>>::new())));
 
             use tauri::menu::{Menu, MenuItem};
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;

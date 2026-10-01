@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::os::windows::process::CommandExt;
 use std::process::Command;
 use tauri::{AppHandle, Manager};
+use std::collections::HashMap;
+
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct YTSearchResult {
@@ -173,8 +175,11 @@ pub async fn queue_download(
         ).map_err(|e| e.to_string())?;
     }
 
+    let handles = app.state::<std::sync::Arc<std::sync::Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>>().inner().clone();
+    let id_clone = id.clone();
+
     // Spawn background worker
-    tauri::async_runtime::spawn(async move {
+    let handle = tauri::async_runtime::spawn(async move {
         let tools_dir = get_tools_dir(&app);
         let yt_dlp = tools_dir.join("yt-dlp.exe");
         let ffmpeg = tools_dir.join("ffmpeg.exe");
@@ -184,7 +189,8 @@ pub async fn queue_download(
         let output_template = download_dir.join("%(title)s.%(ext)s");
 
         #[allow(unused_mut)]
-        let mut cmd = Command::new(&yt_dlp);
+        let mut cmd = tokio::process::Command::new(&yt_dlp);
+        cmd.kill_on_drop(true);
         cmd.arg("-x")
             .arg("--audio-format")
             .arg("mp3")
@@ -203,7 +209,7 @@ pub async fn queue_download(
         #[cfg(windows)]
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
 
-        match cmd.output() {
+        match cmd.output().await {
             Ok(output) => {
                 let status = if output.status.success() {
                     "completed"
@@ -352,6 +358,30 @@ pub async fn queue_download(
         }
     });
 
+    handles.lock().unwrap().insert(id_clone, handle);
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cancel_download(
+    app: AppHandle,
+    id: String,
+) -> Result<(), String> {
+    let handles = app.state::<std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, tauri::async_runtime::JoinHandle<()>>>>>().inner().clone();
+    if let Some(handle) = handles.lock().unwrap().remove(&id) {
+        handle.abort();
+        
+        let db = app
+            .state::<std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>>()
+            .inner()
+            .clone();
+        let conn = db.lock().unwrap();
+        let _ = conn.execute(
+            "UPDATE downloads SET status = 'cancelled' WHERE id = ?",
+            rusqlite::params![id],
+        );
+    }
     Ok(())
 }
 
@@ -383,4 +413,15 @@ pub async fn get_downloads(app: AppHandle) -> Result<Vec<DownloadItem>, String> 
     }
 
     Ok(items)
+}
+
+#[tauri::command]
+pub async fn clear_downloads_log(app: AppHandle) -> Result<(), String> {
+    let db = app.state::<std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>>();
+    let conn = db.inner().lock().unwrap();
+    let _ = conn.execute(
+        "DELETE FROM downloads WHERE status IN ('completed', 'failed', 'cancelled')",
+        [],
+    );
+    Ok(())
 }

@@ -11,7 +11,7 @@ pub fn search_tracks(
     let conn = db.lock().unwrap();
 
     let sql = r#"
-        SELECT t.id, t.path, t.title, t.artist, t.album, t.duration_ms, t.art_hash, t.accent, t.mtime, t.play_count, t.last_played, t.favorite
+        SELECT t.id, t.path, t.title, t.artist, t.album_artist, t.album, t.track_no, t.disc_no, t.duration_ms, t.art_hash, t.accent, t.mtime, t.play_count, t.last_played, t.favorite
         FROM tracks t
         JOIN tracks_fts fts ON t.id = fts.rowid
         WHERE tracks_fts MATCH ?
@@ -30,14 +30,17 @@ pub fn search_tracks(
                 path: row.get(1)?,
                 title: row.get(2)?,
                 artist: row.get(3)?,
-                album: row.get(4)?,
-                duration_ms: row.get::<_, Option<i64>>(5)?.map(|v| v as u64),
-                art_hash: row.get(6)?,
-                accent: row.get(7)?,
-                mtime: row.get::<_, Option<i64>>(8)?.map(|v| v as u64),
-                play_count: row.get::<_, Option<i64>>(9)?.map(|v| v as u64),
-                last_played: row.get::<_, Option<i64>>(10)?.map(|v| v as u64),
-                favorite: row.get::<_, i64>(11).unwrap_or(0) > 0,
+                album_artist: row.get(4)?,
+                album: row.get(5)?,
+                track_no: row.get(6)?,
+                disc_no: row.get(7)?,
+                duration_ms: row.get::<_, Option<i64>>(8)?.map(|v| v as u64),
+                art_hash: row.get(9)?,
+                accent: row.get(10)?,
+                mtime: row.get::<_, Option<i64>>(11)?.map(|v| v as u64),
+                play_count: row.get::<_, Option<i64>>(12)?.map(|v| v as u64),
+                last_played: row.get::<_, Option<i64>>(13)?.map(|v| v as u64),
+                favorite: row.get::<_, i64>(14).unwrap_or(0) > 0,
             })
         })
         .map_err(|e| e.to_string())?;
