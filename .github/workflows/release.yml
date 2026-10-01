@@ -20,7 +20,7 @@ jobs:
           node-version: 20
       - name: get version
         run: echo "PACKAGE_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
-      - name: create draft release
+      - name: create release
         id: create-release
         uses: actions/github-script@v6
         with:
@@ -31,7 +31,7 @@ jobs:
               tag_name: `app-v${process.env.PACKAGE_VERSION}`,
               name: `Stave v${process.env.PACKAGE_VERSION}`,
               body: 'See the assets below to download and install this version of Stave.',
-              draft: true,
+              draft: false,
               prerelease: false
             })
             return data.id
