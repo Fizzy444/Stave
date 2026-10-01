@@ -180,6 +180,7 @@
 }
 
 .fs-lyrics-container {
+  position: relative;
   flex: 1;
   min-width: 0;
   height: 600px;
