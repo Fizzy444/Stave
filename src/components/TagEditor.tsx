@@ -44,30 +44,18 @@ export function TagEditor({ track, onClose }: { track: Track; onClose: () => voi
       <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <h3 className="modal-title">Track Info</h3>
-            <div
-              style={{
-                fontSize: 11,
-                color: 'var(--text-tertiary)',
-                maxWidth: 280,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                marginTop: 2,
-              }}
-              title={fileName}
-            >
-              {fileName}
-            </div>
+            <h3 className="modal-title">Edit song info</h3>
+            <p className="modal-subtitle" title={fileName}>{fileName}</p>
           </div>
-          <button className="btn-icon" onClick={onClose}>
+          <button className="btn-icon" onClick={onClose} aria-label="Close">
             <X size={16} />
           </button>
         </div>
 
         <div className="form-group">
-          <label className="form-label">Title</label>
+          <label className="form-label" htmlFor="edit-title">Title</label>
           <input
+            id="edit-title"
             type="text"
             className="form-input"
             value={title}
@@ -78,8 +66,9 @@ export function TagEditor({ track, onClose }: { track: Track; onClose: () => voi
         </div>
 
         <div className="form-group">
-          <label className="form-label">Artist</label>
+          <label className="form-label" htmlFor="edit-artist">Artist</label>
           <input
+            id="edit-artist"
             type="text"
             className="form-input"
             value={artist}
@@ -89,8 +78,9 @@ export function TagEditor({ track, onClose }: { track: Track; onClose: () => voi
         </div>
 
         <div className="form-group">
-          <label className="form-label">Album</label>
+          <label className="form-label" htmlFor="edit-album">Album</label>
           <input
+            id="edit-album"
             type="text"
             className="form-input"
             value={album}
@@ -99,12 +89,12 @@ export function TagEditor({ track, onClose }: { track: Track; onClose: () => voi
           />
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+        <div className="modal-actions">
           <button className="btn-secondary" onClick={onClose} disabled={isSaving}>
             Cancel
           </button>
           <button className="btn-primary" onClick={handleSave} disabled={isSaving}>
-            {isSaving ? 'Saving...' : 'Save'}
+            {isSaving ? 'Saving…' : 'Save changes'}
           </button>
         </div>
       </div>

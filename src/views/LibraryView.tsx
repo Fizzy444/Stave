@@ -3,7 +3,21 @@ import { usePlayerStore } from '../store/player';
 import { useState, useMemo, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Clock, Disc, PencilSimple, Plus, FolderOpen, ListPlus, Trash, Play, Shuffle, MagicWand } from '@phosphor-icons/react';
+import { 
+  Disc, 
+  PencilSimple, 
+  Plus, 
+  FolderOpen, 
+  ListPlus, 
+  Trash, 
+  Play, 
+  Shuffle, 
+  MagicWand,
+  MagnifyingGlass,
+  FolderSimplePlus,
+  ArrowsClockwise,
+  X
+} from '@phosphor-icons/react';
 import { TagEditor } from '../components/TagEditor';
 import { AddToPlaylistModal } from '../components/AddToPlaylistModal';
 import { ContextMenu } from '../components/ContextMenu';
@@ -27,16 +41,26 @@ const formatDuration = (ms: number) => {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
 
-export function LibraryView() {
-  const { tracks, loadTracks } = useLibraryStore(useShallow(state => ({ tracks: state.tracks, loadTracks: state.loadTracks })));
-  const { playContext, queue, currentIndex, isPlaying, addToQueue } = usePlayerStore(useShallow(state => ({
+export interface LibraryViewProps {
+  onScanFolder?: () => void;
+}
+
+export function LibraryView({ onScanFolder }: LibraryViewProps = {}) {
+  const { tracks, loadTracks, rescanLibrary } = useLibraryStore(useShallow(state => ({ 
+    tracks: state.tracks, 
+    loadTracks: state.loadTracks,
+    rescanLibrary: state.rescanLibrary
+  })));
+  const { playContext, queue, currentIndex, isPlaying, addToQueue, playNext } = usePlayerStore(useShallow(state => ({
     playContext: state.playContext,
     queue: state.queue,
     currentIndex: state.currentIndex,
     isPlaying: state.isPlaying,
-    addToQueue: state.addToQueue
+    addToQueue: state.addToQueue,
+    playNext: state.playNext,
   })));
 
+  const [localSearch, setLocalSearch] = useState<string>('');
   const [activeFolder, setActiveFolder] = useState<string>('All');
   const [sortCol, setSortCol] = useState<'title' | 'album' | 'date_added' | 'duration' | null>(null);
   const [sortAsc, setSortAsc] = useState<boolean>(true);
@@ -76,6 +100,16 @@ export function LibraryView() {
       filtered = tracks.filter(t => getFolderName(t.path) === activeFolder);
     }
 
+    if (localSearch.trim()) {
+      const q = localSearch.trim().toLowerCase();
+      filtered = filtered.filter(t => 
+        (t.title && t.title.toLowerCase().includes(q)) ||
+        (t.artist && t.artist.toLowerCase().includes(q)) ||
+        (t.album && t.album.toLowerCase().includes(q)) ||
+        (t.path && t.path.toLowerCase().includes(q))
+      );
+    }
+
     if (sortCol) {
       filtered = [...filtered].sort((a, b) => {
         let valA: any = 0;
@@ -102,7 +136,7 @@ export function LibraryView() {
     }
 
     return filtered;
-  }, [tracks, activeFolder, sortCol, sortAsc]);
+  }, [tracks, activeFolder, sortCol, sortAsc, localSearch]);
 
   const handleSort = (col: 'title' | 'album' | 'date_added' | 'duration') => {
     if (sortCol === col) {
@@ -144,7 +178,7 @@ export function LibraryView() {
         }
       } else {
         newSelection = new Set([track.id]);
-        playContext(displayedTracks, index);
+        playContext(displayedTracks, index, { contextLabel: activeFolder === 'All' ? 'Songs' : activeFolder });
       }
     }
     
@@ -152,7 +186,6 @@ export function LibraryView() {
     setLastSelectedId(track.id);
   };
 
-  // Exit select mode when clicking blank space
   const handleBlankClick = () => {
     if (isSelectMode) {
       setIsSelectMode(false);
@@ -185,216 +218,272 @@ export function LibraryView() {
   const rowVirtualizer = useVirtualizer({
     count: displayedTracks.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 56,
-    overscan: 10,
+    estimateSize: () => 34,
+    overscan: 12,
   });
 
   return (
     <div className="view-container" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="view-header" style={{ paddingBottom: '0', flexShrink: 0 }}>
-        <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <h2 style={{ fontSize: '28px', fontWeight: 700, margin: 0, color: 'var(--text-primary)', letterSpacing: '-0.5px' }}>
-              Your Library
-            </h2>
-            <div style={{ fontSize: '13px', color: 'var(--text-tertiary)', fontWeight: 500 }}>
-              {tracks.length} tracks • {folders.length} folders
+            <div className="library-instrument-toolbar">
+              <div className="library-toolbar-title-group">
+                <h1 className="library-toolbar-title">Songs</h1>
+                <span className="library-toolbar-stats">
+                  {displayedTracks.length} of {tracks.length} songs
+                  {folders.length > 0 ? ` · ${folders.length} ${folders.length === 1 ? 'folder' : 'folders'}` : ''}
+                </span>
+              </div>
+
+              {/* Local Search + Actions */}
+              <div className="library-toolbar-actions">
+                <div className="library-quick-search">
+                  <MagnifyingGlass size={13} className="search-icon" />
+                  <input
+                    type="text"
+                    placeholder="Search songs"
+                    value={localSearch}
+                    onChange={(e) => setLocalSearch(e.target.value)}
+                  />
+                  {localSearch && (
+                    <button onClick={() => setLocalSearch('')} className="clear-btn">
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+
+                {onScanFolder && (
+                  <button
+                    className="btn-secondary"
+                    onClick={onScanFolder}
+                    title="Add a music folder"
+                  >
+                    <FolderSimplePlus size={14} />
+                    <span>Add folder</span>
+                  </button>
+                )}
+
+                <button
+                  className="btn-secondary"
+                  onClick={() => rescanLibrary()}
+                  title="Refresh library"
+                >
+                  <ArrowsClockwise size={14} />
+                  <span>Refresh</span>
+                </button>
+
+                <button 
+                  className="btn-primary" 
+                  onClick={() => displayedTracks.length > 0 && playContext(displayedTracks, 0, { contextLabel: activeFolder === 'All' ? 'Songs' : activeFolder })}
+                >
+                  <Play size={13} weight="fill" />
+                  <span>Play all</span>
+                </button>
+                <button 
+                  className="btn-secondary" 
+                  onClick={() => {
+                    if (displayedTracks.length === 0) return;
+                    const shuffled = [...displayedTracks].sort(() => 0.5 - Math.random());
+                    playContext(shuffled, 0, { contextLabel: activeFolder === 'All' ? 'Songs' : activeFolder });
+                  }}
+                >
+                  <Shuffle size={13} weight="bold" />
+                  <span>Shuffle</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Folder Filter Bar */}
+            <div className="library-folder-bar hide-scrollbar">
+              <button
+                className={`library-folder-chip ${activeFolder === 'All' ? 'active' : ''}`}
+                onClick={() => setActiveFolder('All')}
+              >
+                <span>All</span>
+                <span className="chip-count">{tracks.length}</span>
+              </button>
+              {folders.map(([folder, count]) => (
+                <button
+                  key={folder}
+                  className={`library-folder-chip ${activeFolder === folder ? 'active' : ''}`}
+                  onClick={() => setActiveFolder(folder)}
+                >
+                  <span>{folder}</span>
+                  <span className="chip-count">{count}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Table Header */}
+            <div className="library-table-header">
+              <div className="col-idx">#</div>
+              <div className="col-title" onClick={() => handleSort('title')}>
+                Title {sortCol === 'title' && (sortAsc ? '↑' : '↓')}
+              </div>
+              <div className="col-artist">Artist</div>
+              <div className="col-album" onClick={() => handleSort('album')}>
+                Album {sortCol === 'album' && (sortAsc ? '↑' : '↓')}
+              </div>
+              <div className="col-fmt">Format</div>
+              <div className="col-date" onClick={() => handleSort('date_added')}>
+                Added {sortCol === 'date_added' && (sortAsc ? '↑' : '↓')}
+              </div>
+              <div className="col-time" onClick={() => handleSort('duration')}>
+                Time {sortCol === 'duration' && (sortAsc ? '↑' : '↓')}
+              </div>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button 
-              className="btn-secondary" 
-              onClick={() => displayedTracks.length > 0 && playContext(displayedTracks, 0)}
-              style={{ padding: '8px 16px', gap: '8px', color: 'var(--text-primary)' }}
-            >
-              <Play size={16} weight="fill" />
-              <span style={{ fontWeight: 600 }}>Play All</span>
-            </button>
-            <button 
-              className="btn-secondary" 
-              onClick={() => {
-                if (displayedTracks.length === 0) return;
-                const shuffled = [...displayedTracks].sort(() => 0.5 - Math.random());
-                playContext(shuffled, 0);
-              }}
-              style={{ padding: '8px 16px', gap: '8px', color: 'var(--text-primary)' }}
-            >
-              <Shuffle size={16} weight="bold" />
-              <span style={{ fontWeight: 600 }}>Shuffle</span>
-            </button>
-          </div>
-        </div>
 
-        {/* Tabs */}
-        <div className="hide-scrollbar" style={{ display: 'flex', gap: '24px', overflowX: 'auto', borderBottom: '1px solid var(--divider-subtle)', marginBottom: '24px' }}>
-          <div
-            onClick={() => setActiveFolder('All')}
-            style={{
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: activeFolder === 'All' ? 700 : 500,
-              color: activeFolder === 'All' ? 'var(--text-primary)' : 'var(--text-tertiary)',
-              borderBottom: activeFolder === 'All' ? '2px solid var(--text-primary)' : '2px solid transparent',
-              paddingBottom: '12px',
-              marginBottom: '-1px',
-              whiteSpace: 'nowrap',
-              transition: 'color 0.2s'
+          {/* Table Body */}
+          <div 
+            ref={parentRef}
+            className="view-content"
+            onClick={handleBlankClick}
+            style={{ 
+              flex: 1, 
+              overflowY: 'auto',
+              padding: '0 0 24px 0'
             }}
           >
-            All <span style={{ color: 'var(--text-tertiary)', fontSize: '12px', marginLeft: '6px', fontWeight: 500 }}>{tracks.length}</span>
-          </div>
-          {folders.map(([folder, count]) => (
-            <div
-              key={folder}
-              onClick={() => setActiveFolder(folder)}
-              style={{
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: activeFolder === folder ? 700 : 500,
-                color: activeFolder === folder ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                borderBottom: activeFolder === folder ? '2px solid var(--text-primary)' : '2px solid transparent',
-                paddingBottom: '12px',
-                marginBottom: '-1px',
-                whiteSpace: 'nowrap',
-                transition: 'color 0.2s'
-              }}
-            >
-              {folder} <span style={{ color: 'var(--text-tertiary)', fontSize: '12px', marginLeft: '6px', fontWeight: 500 }}>{count}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+            {displayedTracks.length === 0 ? (
+              <div className="view-empty">
+                <p>
+                  {localSearch
+                    ? `No songs match “${localSearch}”.`
+                    : 'No songs here yet. Add a folder to get started.'}
+                </p>
+              </div>
+            ) : (
+              <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+                {rowVirtualizer.getVirtualItems().map(virtualRow => {
+                  const track = displayedTracks[virtualRow.index];
+                  const isCurrent = track.id === currentTrackId;
+                  const isSelected = selectedIds.has(track.id);
+                  const isYt = track.source === 'youtube'
+                    || (track.path != null && track.path.startsWith('yt:'))
+                    || (typeof track.id === 'string' && track.id.startsWith('yt_'));
+                  const ext = isYt ? null : (track.path && !track.path.startsWith('http') ? (track.path.split('.').pop()?.toUpperCase() || 'PCM') : null);
+                  const isLossless = ext ? ['FLAC', 'WAV', 'ALAC', 'AIFF'].includes(ext) : false;
 
-      <div className="view-content" onClick={handleBlankClick} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 0 }}>
-
-        {/* Table Header */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '40px minmax(200px, 2fr) minmax(150px, 1.5fr) minmax(100px, 1fr) 50px',
-          gap: '16px',
-          padding: '0 16px',
-          margin: '0 16px 8px 16px',
-          height: '36px',
-          alignItems: 'center',
-          backgroundColor: 'rgba(255, 255, 255, 0.03)',
-          borderRadius: '4px',
-          fontSize: '11px',
-          color: 'var(--text-tertiary)',
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '1px',
-          flexShrink: 0
-        }}>
-          <div style={{ textAlign: 'center' }}>#</div>
-          <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', paddingLeft: '52px' }} onClick={() => handleSort('title')}>
-            TITLE {sortCol === 'title' && (sortAsc ? '▲' : '▼')}
-          </div>
-          <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => handleSort('album')}>
-            ALBUM {sortCol === 'album' && (sortAsc ? '▲' : '▼')}
-          </div>
-          <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => handleSort('date_added')}>
-            DATE ADDED {sortCol === 'date_added' && (sortAsc ? '▲' : '▼')}
-          </div>
-          <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }} onClick={() => handleSort('duration')}>
-            <Clock size={14} /> {sortCol === 'duration' && (sortAsc ? '▲' : '▼')}
-          </div>
-        </div>
-
-        {/* Scrollable Tracks */}
-        <div ref={parentRef} style={{ flex: 1, overflowY: 'auto', padding: '0 16px' }}>
-          <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative', paddingBottom: '32px' }}>
-            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-              const i = virtualRow.index;
-              const track = displayedTracks[i];
-              const isCurrent = currentTrackId === track.id;
-              const isThisPlaying = isCurrent && isPlaying;
-              const title = track.title || track.path.split(/[\\/]/).pop()?.replace(/\.[^/.]+$/, '') || 'Unknown Title';
-              const isSelected = selectedIds.has(track.id);
-
-              return (
-                <div
-                  key={track.id}
-                  className={`library-row ${isCurrent ? 'is-active' : ''} ${isSelected ? 'is-selected' : ''}`}
-                  onClick={(e) => handleRowClick(e, track, i)}
-                  onContextMenu={(e) => handleContextMenu(e, track)}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    transform: `translateY(${virtualRow.start}px)`,
-                    display: 'grid',
-                    gridTemplateColumns: '40px minmax(200px, 2fr) minmax(150px, 1.5fr) minmax(100px, 1fr) 50px',
-                    gap: '16px',
-                    alignItems: 'center',
-                    height: `${virtualRow.size}px`,
-                    borderRadius: '6px',
-                    padding: '0 16px',
-                    cursor: 'pointer',
-                    transition: 'background-color 0.2s',
-                    backgroundColor: isSelected ? 'var(--surface-selected)' : (isCurrent ? 'rgba(255,255,255,0.05)' : 'transparent'),
-                  }}
-                  onMouseEnter={(e) => { if (!isSelected && !isCurrent) e.currentTarget.style.backgroundColor = 'var(--surface-hover)' }}
-                  onMouseLeave={(e) => { if (!isSelected && !isCurrent) e.currentTarget.style.backgroundColor = 'transparent' }}
-                >
-                  <div style={{ textAlign: 'center', fontSize: '14px', color: isCurrent ? 'var(--accent)' : 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
-                    {isThisPlaying ? '▶' : i + 1}
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                    <div style={{ width: '40px', height: '40px', flexShrink: 0, borderRadius: '4px', overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {track.art_hash ? <img src={getArtworkUrl(track.art_hash) || ''} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Disc size={20} color="var(--text-tertiary)" />}
-                    </div>
-                    <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px' }}>
-                      <div style={{ fontWeight: 600, fontSize: '14px', color: isCurrent ? 'var(--accent)' : 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {title}
+                  return (
+                    <div
+                      key={track.id}
+                      className={`library-row ${isCurrent ? 'is-active' : ''} ${isSelected ? 'selected' : ''}`}
+                      onClick={(e) => handleRowClick(e, track, virtualRow.index)}
+                      onContextMenu={(e) => handleContextMenu(e, track)}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: `${virtualRow.size}px`,
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      <div className="col-idx">
+                        {isCurrent && isPlaying ? (
+                          <Play size={11} weight="fill" color="var(--accent)" />
+                        ) : (
+                          virtualRow.index + 1
+                        )}
                       </div>
-                      <div style={{ fontSize: '13px', color: 'var(--text-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {track.artist || 'Unknown Artist'}
+
+                      <div className="col-title">
+                        <div className="track-thumb-mini">
+                          {track.art_hash ? (
+                            <img 
+                              src={getArtworkUrl(track.art_hash) || ''} 
+                              alt="" 
+                            />
+                          ) : (
+                            <Disc size={13} color="var(--text-dim)" />
+                          )}
+                        </div>
+                        <span className="track-title-cell" title={track.title || (isYt ? 'YouTube track' : track.path.split(/[\\/]/).pop())}>
+                          {track.title || (isYt ? 'YouTube track' : track.path.split(/[\\/]/).pop())}
+                        </span>
+                      </div>
+
+                      <div className="col-artist" title={track.artist || 'Unknown artist'}>
+                        {track.artist || 'Unknown artist'}
+                      </div>
+
+                      <div className="col-album" title={isYt ? '' : (track.album || 'Unknown album')}>
+                        {isYt ? '' : (track.album || 'Unknown album')}
+                      </div>
+
+                      <div className="col-fmt">
+                        {ext && (
+                          <span className={`track-fmt-tag ${isLossless ? 'lossless' : ''}`}>
+                            {ext}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="col-date">
+                        {track.mtime ? formatDate(track.mtime) : '--'}
+                      </div>
+
+                      <div className="col-time">
+                        <button
+                          className="row-action-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addToQueue(track);
+                          }}
+                          title="Add to queue"
+                        >
+                          <Plus size={12} />
+                        </button>
+                        <button
+                          className="row-action-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingTrack(track);
+                          }}
+                          title="Edit song info"
+                        >
+                          <PencilSimple size={12} />
+                        </button>
+                        <span className="duration-text">
+                          {track.duration_ms ? formatDuration(track.duration_ms) : '--:--'}
+                        </span>
                       </div>
                     </div>
-                  </div>
-
-                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {track.album || ''}
-                  </div>
-
-                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {track.mtime ? formatDate(track.mtime) : ''}
-                  </div>
-
-                  <div style={{ fontSize: '13px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
-                    <div style={{ width: '35px', textAlign: 'right' }}>
-                      {track.duration_ms ? formatDuration(track.duration_ms) : '--:--'}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      </div>
 
+      {/* Editing Modals */}
       {editingTrack && (
         <TagEditor
           track={editingTrack}
-          onClose={() => setEditingTrack(null)}
+          onClose={() => {
+            setEditingTrack(null);
+            loadTracks();
+          }}
         />
       )}
-      {movingTrack && (
-        <MoveTrackModal
-          track={movingTrack}
-          folders={absoluteFolders}
-          onClose={() => setMovingTrack(null)}
-        />
-      )}
+
       {playlistTrack && (
         <AddToPlaylistModal
           track={playlistTrack}
           onClose={() => setPlaylistTrack(null)}
         />
       )}
-      
+
+      {movingTrack && (
+        <MoveTrackModal
+          track={movingTrack}
+          folders={absoluteFolders}
+          onClose={() => {
+            setMovingTrack(null);
+            loadTracks();
+          }}
+        />
+      )}
+
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x}
@@ -405,50 +494,49 @@ export function LibraryView() {
               label: 'Play',
               icon: <Disc size={16} />,
               onClick: () => {
-                const index = displayedTracks.findIndex(t => t.id === contextMenu.tracks[0].id);
-                if (index !== -1) playContext(displayedTracks, index);
-                setIsSelectMode(false);
+                const idx = displayedTracks.findIndex(t => t.id === contextMenu.tracks[0].id);
+                if (idx !== -1) playContext(displayedTracks, idx, { contextLabel: activeFolder === 'All' ? 'Songs' : activeFolder });
               }
             },
             {
-              label: isSelectMode ? 'Exit Select Mode' : 'Select',
-              icon: <ListPlus size={16} />,
+              label: 'Play next',
+              icon: <Play size={16} />,
               onClick: () => {
-                if (!isSelectMode) {
-                  setIsSelectMode(true);
-                } else {
-                  setIsSelectMode(false);
-                  setSelectedIds(new Set());
+                for (let k = contextMenu.tracks.length - 1; k >= 0; k--) {
+                  playNext(contextMenu.tracks[k]);
                 }
               }
             },
             {
-              label: 'Add to Up Next',
+              label: 'Add to queue',
               icon: <Plus size={16} />,
-              onClick: () => contextMenu.tracks.forEach(t => addToQueue(t))
+              onClick: () => {
+                for (const t of contextMenu.tracks) addToQueue(t);
+              }
             },
             { divider: true, label: '', onClick: () => {} },
             {
-              label: 'Add to Playlist...',
+              label: 'Add to playlist…',
               icon: <ListPlus size={16} />,
               onClick: () => {
-                // For multiple, we could loop or implement bulk add. For now just first item or handle bulk later
-                setPlaylistTrack(contextMenu.tracks[0]); 
+                if (contextMenu.tracks.length === 1) {
+                  setPlaylistTrack(contextMenu.tracks[0]);
+                }
               }
             },
             {
-              label: 'Move File...',
+              label: 'Move file…',
               icon: <FolderOpen size={16} />,
               onClick: () => setMovingTrack(contextMenu.tracks[0])
             },
             { divider: true, label: '', onClick: () => {} },
             {
-              label: 'Edit Metadata...',
+              label: 'Edit song info…',
               icon: <PencilSimple size={16} />,
               onClick: () => setEditingTrack(contextMenu.tracks[0])
             },
             {
-              label: 'Auto-Fix Metadata',
+              label: 'Auto-fix metadata',
               icon: <MagicWand size={16} />,
               onClick: async () => {
                 const trackIds = contextMenu.tracks.map(t => t.id);
@@ -463,11 +551,11 @@ export function LibraryView() {
             },
             { divider: true, label: '', onClick: () => {} },
             {
-              label: 'Delete from disk',
+              label: 'Delete from computer',
               icon: <Trash size={16} />,
               danger: true,
               onClick: async () => {
-                if (window.confirm(`Are you sure you want to permanently delete "${contextMenu.tracks[0].title || 'this song'}" from your disk?`)) {
+                if (window.confirm(`Are you sure you want to permanently delete "${contextMenu.tracks[0].title || 'this song'}" from your computer?`)) {
                   try {
                     await invoke('delete_track', { trackId: contextMenu.tracks[0].id });
                     await loadTracks();

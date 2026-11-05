@@ -1,70 +1,55 @@
+import { useShallow } from 'zustand/react/shallow';
 import { useEffect, useState, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { usePlayerStore } from '../store/player';
-import { parseLrc, LyricLine } from '../lyrics/parseLrc';
+import { useLibraryStore } from '../store/library';
+import { useLyricsStore, getTrackKey } from '../store/lyrics';
 import { engine } from '../audio/engine';
-import { CircleNotch } from '@phosphor-icons/react';
+import { CircleNotch, Quotes, CaretDown, Plus, Minus } from '@phosphor-icons/react';
+import './LyricsPanel.css';
 
 export function LyricsPanel() {
-  const { queue, currentIndex, position } = usePlayerStore();
-  const track = currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
+  const { tracks } = useLibraryStore();
+  const { queue, currentIndex, position } = usePlayerStore(useShallow(s => ({
+    queue: s.queue,
+    currentIndex: s.currentIndex,
+    position: s.position,
+  })));
+  const currentTrack = currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
+  const track = currentTrack ? tracks.find(t => t.id === currentTrack.id) || currentTrack : null;
 
-  const [lyrics, setLyrics] = useState<LyricLine[] | null>(null);
-  const [plainText, setPlainText] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const {
+    lyrics,
+    plainText,
+    isLoading,
+    currentProvider,
+    offsetMs,
+    activeTrackKey,
+    setOffsetMs,
+    openModal,
+    fetchForTrack,
+  } = useLyricsStore();
+
   const [activeIndex, setActiveIndex] = useState(-1);
-
   const containerRef = useRef<HTMLDivElement>(null);
   const isManualScroll = useRef(false);
   const scrollTimeout = useRef<number | undefined>(undefined);
 
-  const [offsetMs, setOffsetMs] = useState(0);
+  const trackKey = getTrackKey(track);
 
   useEffect(() => {
-    if (!track) {
-      setLyrics(null);
-      setPlainText(null);
-      setOffsetMs(0);
-      return;
-    }
+    setActiveIndex(-1);
+    isManualScroll.current = false;
+    if (containerRef.current) containerRef.current.scrollTop = 0;
+    void fetchForTrack(track);
+  }, [trackKey, fetchForTrack]);
 
-    let active = true;
-    setIsLoading(true);
-    setLyrics(null);
-    setPlainText(null);
-    setOffsetMs(0);
-
-    invoke<{ synced: string | null; plain: string | null }>('fetch_lyrics', {
-      trackId: track.id,
-      title: track.title || '',
-      artist: track.artist || '',
-      album: track.album || '',
-      durationMs: track.duration_ms || 0,
-    })
-      .then((res) => {
-        if (!active) return;
-        if (res.synced) {
-          setLyrics(parseLrc(res.synced));
-        } else if (res.plain) {
-          setPlainText(res.plain);
-        }
-        setIsLoading(false);
-      })
-      .catch((err) => {
-        console.error('Lyrics error:', err);
-        if (active) setIsLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [track?.id]);
+  const trackLyricsReady = activeTrackKey === trackKey;
 
   useEffect(() => {
     if (!lyrics || lyrics.length === 0) return;
 
     let newActive = -1;
-    const adjustedPosition = position - (offsetMs / 1000);
+    const adjustedPosition = position - offsetMs / 1000;
     for (let i = 0; i < lyrics.length; i++) {
       if (adjustedPosition >= lyrics[i].time) {
         newActive = i;
@@ -96,39 +81,86 @@ export function LyricsPanel() {
 
   if (!track) {
     return (
-      <div className="empty-library-state">
-        <div style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>No track playing</div>
+      <div className="lyrics-empty-container">
+        <div className="lyrics-empty-sub">No track playing</div>
       </div>
     );
   }
 
   return (
-    <div
-      className="lyrics-container"
-      onWheel={handleScroll}
-      ref={containerRef}
-      style={{ position: 'relative' }}
-    >
-      {isLoading && (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 10,
-            marginTop: '35%',
-            color: 'var(--text-tertiary)',
+    <div className="lyrics-panel-wrapper">
+      {/* Top Header Bar with Provider Selection Pill and Sync Controls */}
+      <div className="lyrics-toolbar">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            openModal();
           }}
+          className="lyrics-provider-btn"
+          title="Change lyrics provider"
         >
-          <CircleNotch size={24} className="spinning-icon" />
-          <span style={{ fontSize: 12 }}>Loading Lyrics...</span>
-        </div>
-      )}
+          <span className="lyrics-provider-icon">
+            <Quotes size={12} weight="bold" />
+          </span>
+          <span className="lyrics-provider-name">{currentProvider}</span>
+          <span className="lyrics-provider-caret">
+            <CaretDown size={10} weight="bold" />
+          </span>
+        </button>
 
-      {!isLoading && lyrics && lyrics.length > 0 && (
-        <>
-          <div className={`lyrics-scroll-area ${activeIndex === -1 ? 'is-waiting' : ''}`} style={{ paddingBottom: '60%' }}>
+        {!isLoading && trackLyricsReady && lyrics && lyrics.length > 0 && (
+          <div className="lyrics-sync-widget">
+            <button
+              className="lyrics-sync-btn"
+              onClick={() => setOffsetMs((o) => o - 500)}
+              title="Shift lyrics earlier (-0.5s)"
+            >
+              <Minus size={11} weight="bold" />
+            </button>
+            <span className={`lyrics-sync-value ${offsetMs !== 0 ? 'active' : ''}`}>
+              {offsetMs > 0 ? '+' : ''}
+              {(offsetMs / 1000).toFixed(1)}s
+            </span>
+            <button
+              className="lyrics-sync-btn"
+              onClick={() => setOffsetMs((o) => o + 500)}
+              title="Shift lyrics later (+0.5s)"
+            >
+              <Plus size={11} weight="bold" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Lyrics Scrollable Body */}
+      <div
+        className="lyrics-scroll-container"
+        onWheel={handleScroll}
+        ref={containerRef}
+      >
+        {isLoading && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              marginTop: '35%',
+              color: 'var(--text-tertiary)',
+            }}
+          >
+            <CircleNotch size={24} className="spinning-icon" />
+            <span style={{ fontSize: 12 }}>Looking for lyrics on {currentProvider}…</span>
+          </div>
+        )}
+
+        {!isLoading && trackLyricsReady && lyrics && lyrics.length > 0 && (
+          <div
+            className={`lyrics-scroll-area ${activeIndex === -1 ? 'is-waiting' : ''}`}
+            style={{ paddingBottom: '60%' }}
+          >
             {lyrics.map((line, i) => {
               const distance = activeIndex === -1 ? 0 : Math.abs(i - activeIndex);
               return (
@@ -136,82 +168,42 @@ export function LyricsPanel() {
                   key={i}
                   className={`lyric-line-item ${i === activeIndex ? 'is-active' : ''}`}
                   style={{ '--distance': distance } as React.CSSProperties}
-                  onClick={() => engine.seek(line.time + (offsetMs / 1000))}
+                  onClick={() => engine.seek(line.time + offsetMs / 1000)}
                 >
                   {line.text || '♪'}
                 </div>
               );
             })}
           </div>
-          
-          <div style={{
-            position: 'fixed',
-            bottom: '100px',
-            right: '32px',
-            display: 'flex',
-            alignItems: 'center',
-            backgroundColor: 'oklch(0.18 0 0 / 0.8)',
-            backdropFilter: 'blur(12px)',
-            borderRadius: '24px',
-            padding: '4px',
-            border: '1px solid var(--divider)',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-            zIndex: 10
-          }}>
-            <button 
-              className="btn-icon" 
-              onClick={() => setOffsetMs(o => o - 500)}
-              title="Shift lyrics earlier (-0.5s)"
-              style={{ width: '28px', height: '28px', color: 'var(--text-primary)' }}
+        )}
+
+        {!isLoading && trackLyricsReady && !lyrics && plainText && (
+          <div className="lyrics-plain-text">
+            {plainText}
+          </div>
+        )}
+
+        {!isLoading && trackLyricsReady && !lyrics && !plainText && (
+          <div className="lyrics-empty-container" style={{ marginTop: '20%' }}>
+            <div className="lyrics-empty-title">
+              No lyrics found on {currentProvider}
+            </div>
+            <div className="lyrics-empty-sub">
+              Try choosing a different provider below.
+            </div>
+            <button
+              type="button"
+              className="lyrics-choose-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                openModal();
+              }}
             >
-              -
-            </button>
-            <span style={{ 
-              fontSize: '11px', 
-              fontWeight: 600, 
-              color: offsetMs === 0 ? 'var(--text-tertiary)' : 'var(--accent)',
-              width: '40px',
-              textAlign: 'center',
-              fontVariantNumeric: 'tabular-nums'
-            }}>
-              {offsetMs > 0 ? '+' : ''}{(offsetMs / 1000).toFixed(1)}s
-            </span>
-            <button 
-              className="btn-icon" 
-              onClick={() => setOffsetMs(o => o + 500)}
-              title="Shift lyrics later (+0.5s)"
-              style={{ width: '28px', height: '28px', color: 'var(--text-primary)' }}
-            >
-              +
+              Choose Provider
             </button>
           </div>
-        </>
-      )}
-
-      {!isLoading && !lyrics && plainText && (
-        <div
-          style={{
-            whiteSpace: 'pre-wrap',
-            color: 'var(--text-secondary)',
-            fontSize: 15,
-            lineHeight: 1.7,
-            padding: '16px 0',
-          }}
-        >
-          {plainText}
-        </div>
-      )}
-
-      {!isLoading && !lyrics && !plainText && (
-        <div className="empty-library-state" style={{ marginTop: '30%' }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>
-            No Lyrics Available
-          </div>
-          <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)' }}>
-            Instrumental or not available on LRCLIB.
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

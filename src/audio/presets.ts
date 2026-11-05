@@ -1,4 +1,4 @@
-export type EqPreset = {
+﻿export type EqPreset = {
     name: string;
     gains: number[]; // 10 bands
     preamp: number;

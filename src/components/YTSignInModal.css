@@ -1,0 +1,49 @@
+.yt-auth-scrim { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; padding: 20px; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(16px); }
+.yt-auth-panel { width: min(560px, 100%); overflow: hidden; color: #ffffff; background: #1c1c1e; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 14px; box-shadow: 0 24px 70px rgba(0,0,0,.7); }
+.yt-auth-heading { display: flex; align-items: center; justify-content: space-between; padding: 20px 22px; }
+.yt-auth-identity { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.yt-auth-identity > img, .yt-auth-avatar { display: grid; flex: 0 0 42px; place-items: center; width: 42px; height: 42px; object-fit: cover; color: #ffffff; background: #2c2c2e; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 50%; font-size: 17px; font-weight: 700; }
+.yt-auth-source { color: #a1a1a6; font-size: 11px; font-weight: 500; }
+.yt-auth-heading h2 { overflow: hidden; margin: 4px 0 0; font-size: 17px; font-weight: 640; text-overflow: ellipsis; white-space: nowrap; }
+.yt-auth-identity p { overflow: hidden; margin: 3px 0 0; color: #a1a1a6; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.yt-auth-close { display: grid; flex: 0 0 32px; place-items: center; width: 32px; height: 32px; padding: 0; color: #a1a1a6; background: transparent; border: 0; border-radius: 50%; cursor: pointer; transition: background 0.15s ease, color 0.15s ease; }
+.yt-auth-close:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
+.yt-auth-tabs { display: flex; padding: 0 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.yt-auth-tab { position: relative; display: flex; flex: 1; align-items: center; justify-content: center; gap: 7px; min-height: 42px; padding: 0 6px; color: #a1a1a6; background: transparent; border: 0; font: inherit; font-size: 12px; cursor: pointer; }
+.yt-auth-tab:hover { color: #ffffff; }
+.yt-auth-tab.is-active { color: #ffffff; font-weight: 600; }
+.yt-auth-tab.is-active::after { position: absolute; right: 12px; bottom: -1px; left: 12px; height: 2px; background: #ffffff; content: ''; border-radius: 1px; }
+.yt-auth-content { min-height: 230px; padding: 22px; }
+.yt-auth-signin, .yt-auth-form { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
+.yt-auth-signin > p, .yt-auth-form > p { margin: 0 0 4px; color: #a1a1a6; font-size: 13px; line-height: 1.55; }
+.yt-auth-form h3 { margin: 0; font-size: 16px; font-weight: 620; }
+.yt-auth-form label { margin: 4px 0 -6px; color: #d4d4d8; font-size: 11px; font-weight: 600; }
+.yt-auth-form label span { margin-left: 5px; color: #71717a; font-weight: 400; }
+.yt-auth-primary, .yt-auth-secondary, .yt-auth-signout { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 0 16px; border-radius: 8px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s ease; }
+.yt-auth-primary { color: #000000; background: #ffffff; border: 0; }
+.yt-auth-primary:hover:not(:disabled) { background: #e5e5ea; transform: scale(1.01); }
+.yt-auth-primary:disabled, .yt-auth-secondary:disabled { opacity: .45; cursor: wait; }
+.yt-auth-secondary { width: 100%; color: #ffffff; background: #2c2c2e; border: 1px solid rgba(255, 255, 255, 0.12); }
+.yt-auth-secondary:hover:not(:disabled) { background: #3a3a3c; }
+.yt-auth-link { align-self: flex-start; padding: 4px 0; color: #ffffff; text-decoration: underline; background: none; border: 0; font: inherit; font-size: 12px; cursor: pointer; }
+.yt-auth-note { color: #71717a; font-size: 11px; line-height: 1.45; }
+.yt-auth-current { display: flex; align-items: center; gap: 7px; color: #ffffff; font-size: 12px; font-weight: 500; }
+.yt-auth-error { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 12px; padding: 10px 12px; color: #ffffff; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; font-size: 12px; }
+.yt-auth-error svg { flex: 0 0 auto; color: #ffffff; }
+.yt-auth-input { width: 100%; min-height: 38px; padding: 9px 12px; color: #ffffff; background: #141416; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 8px; font: inherit; font-size: 12px; outline: none; }
+.yt-auth-input:focus { border-color: rgba(255, 255, 255, 0.45); }
+.yt-auth-input::placeholder { color: #52525b; }
+.yt-auth-cookie { min-height: 72px; resize: vertical; font-family: var(--font-mono); font-size: 10px; }
+.yt-auth-profile { display: flex; align-items: center; gap: 12px; padding: 14px 0; }
+.yt-auth-profile img, .yt-auth-profile .yt-auth-avatar { flex: 0 0 48px; width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
+.yt-auth-profile h3 { margin: 0 0 4px; font-size: 15px; font-weight: 620; }
+.yt-auth-profile p { margin: 0; color: #a1a1a6; font-size: 12px; }
+.yt-auth-account-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08); color: #71717a; font-size: 11px; }
+.yt-auth-signout { min-height: 34px; color: #ffffff; background: transparent; border: 1px solid rgba(255, 255, 255, 0.2); }
+.yt-auth-signout:hover { background: rgba(255, 255, 255, 0.08); }
+.yt-auth-empty { display: flex; min-height: 190px; flex-direction: column; align-items: center; justify-content: center; color: #a1a1a6; }
+.yt-auth-empty > svg { color: #ffffff; }
+.yt-auth-empty p { margin: 10px 0; font-size: 12px; }
+.spinning-icon { animation: yt-auth-spin 1s linear infinite; }
+@keyframes yt-auth-spin { to { transform: rotate(360deg); } }
+@media (max-width: 520px) { .yt-auth-scrim { padding: 10px; } .yt-auth-heading { padding: 16px; } .yt-auth-tabs { padding: 0 5px; } .yt-auth-tab { flex-direction: column; gap: 3px; font-size: 9px; } .yt-auth-content { padding: 16px; } }

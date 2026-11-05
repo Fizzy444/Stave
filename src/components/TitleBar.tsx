@@ -1,4 +1,4 @@
-import { getCurrentWindow } from '@tauri-apps/api/window';
+﻿import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Minus, SquaresFour, X } from '@phosphor-icons/react';
 import './TitleBar.css';
 

@@ -55,3 +55,37 @@ pub async fn download_tools(app: tauri::AppHandle) -> Result<(), String> {
 
     Ok(())
 }
+
+pub async fn ensure_yt_dlp(app: &AppHandle) {
+    let dir = get_tools_dir(app);
+    let yt_file = if cfg!(windows) {
+        dir.join("yt-dlp.exe")
+    } else {
+        dir.join("yt-dlp")
+    };
+    if yt_file.exists() {
+        return;
+    }
+    eprintln!("[Tools] yt-dlp missing, downloading in background...");
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .unwrap_or_default();
+
+    let yt_url = if cfg!(windows) {
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+    } else {
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
+    };
+
+    if let Ok(resp) = client.get(yt_url).send().await {
+        if resp.status().is_success() {
+            if let Ok(bytes) = resp.bytes().await {
+                if let Ok(mut yt_file_writer) = fs::File::create(&yt_file) {
+                    let _ = yt_file_writer.write_all(&bytes);
+                    eprintln!("[Tools] yt-dlp downloaded successfully!");
+                }
+            }
+        }
+    }
+}

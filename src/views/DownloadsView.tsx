@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { MagnifyingGlass, DownloadSimple, CircleNotch, X, Trash } from '@phosphor-icons/react';
+import { MagnifyingGlass, DownloadSimple, CircleNotch, X, Trash, MusicNote } from '@phosphor-icons/react';
+import { handleThumbnailError } from '../utils/thumbnail';
 
 type YTSearchResult = {
   id: string;
@@ -9,18 +10,37 @@ type YTSearchResult = {
   duration: number;
 };
 
+type DownloadEntry = {
+  id: string;
+  title?: string;
+  artist?: string;
+  status: string;
+};
+
+const formatDuration = (seconds: number) => {
+  if (!seconds || Number.isNaN(seconds)) return '--:--';
+  return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+};
+
+const statusLabel: Record<string, string> = {
+  downloading: 'Downloading',
+  queued: 'Waiting',
+  completed: 'Downloaded',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+};
+
 export function DownloadsView() {
   const [query, setQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<YTSearchResult[]>([]);
   const [activeTab, setActiveTab] = useState<'search' | 'active' | 'completed'>('search');
-  
-  const [downloads, setDownloads] = useState<any[]>([]);
+  const [downloads, setDownloads] = useState<DownloadEntry[]>([]);
 
   useEffect(() => {
     const fetchDownloads = async () => {
       try {
-        const res = await invoke<any[]>('get_downloads');
+        const res = await invoke<DownloadEntry[]>('get_downloads');
         setDownloads(res);
       } catch (e) {
         console.error(e);
@@ -31,7 +51,8 @@ export function DownloadsView() {
     return () => clearInterval(interval);
   }, []);
 
-  const activeDownloadsCount = downloads.filter(d => d.status === 'downloading' || d.status === 'queued').length;
+  const activeDownloads = downloads.filter(d => d.status === 'downloading' || d.status === 'queued');
+  const finishedDownloads = downloads.filter(d => d.status === 'completed' || d.status === 'failed' || d.status === 'cancelled');
 
   const handleCancel = async (id: string) => {
     try {
@@ -45,7 +66,7 @@ export function DownloadsView() {
   const handleClearLog = async () => {
     try {
       await invoke('clear_downloads_log');
-      setDownloads(downloads.filter(d => d.status === 'downloading' || d.status === 'queued'));
+      setDownloads(activeDownloads);
     } catch (e) {
       console.error(e);
     }
@@ -54,7 +75,7 @@ export function DownloadsView() {
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
-    
+
     setIsSearching(true);
     setResults([]);
     try {
@@ -75,145 +96,122 @@ export function DownloadsView() {
     }
   };
 
+  const tabs = [
+    { id: 'search' as const, label: 'Find music' },
+    { id: 'active' as const, label: activeDownloads.length > 0 ? `Downloading (${activeDownloads.length})` : 'Downloading' },
+    { id: 'completed' as const, label: 'History' },
+  ];
+
   return (
-    <div className="view-container" style={{ display: 'flex', flexDirection: 'column' }}>
-      <div className="view-header" style={{ flexShrink: 0, padding: '48px 32px 0 32px' }}>
-        <h2 style={{ fontSize: '32px', fontWeight: 700, margin: 0, color: 'var(--text-primary)', letterSpacing: '-1px' }}>
-          Downloads
-        </h2>
-        
-        <div style={{ display: 'flex', gap: '32px', marginTop: '24px', borderBottom: '1px solid var(--divider)', padding: '0 32px' }}>
-          {[
-            { id: 'search', label: 'Search' },
-            { id: 'active', label: `Active${activeDownloadsCount > 0 ? ` (${activeDownloadsCount})` : ''}` },
-            { id: 'completed', label: 'Completed' }
-          ].map(tab => (
-            <div 
+    <div className="view-container downloads-view">
+      <header className="page-header">
+        <div className="page-header-text">
+          <h1 className="page-title">Downloads</h1>
+          <p className="page-subtitle">Save music for offline listening.</p>
+        </div>
+      </header>
+
+      <div className="downloads-toolbar">
+        <div className="moods-genres-tabs">
+          {tabs.map(tab => (
+            <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              style={{
-                cursor: 'pointer', 
-                fontSize: '14px', 
-                fontWeight: activeTab === tab.id ? 700 : 500, 
-                color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                borderBottom: activeTab === tab.id ? '2px solid var(--text-primary)' : '2px solid transparent',
-                paddingBottom: '12px',
-                marginBottom: '-1px',
-                transition: 'color 0.2s'
-              }}
+              className={`moods-genres-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
             >
               {tab.label}
-            </div>
+            </button>
           ))}
         </div>
       </div>
 
-      <div className="view-content" style={{ flex: 1, overflowY: 'auto' }}>
+      <div className="view-content downloads-body">
         {activeTab === 'search' && (
-          <div style={{ padding: '0 32px' }}>
-            <form onSubmit={handleSearch} style={{ position: 'relative', marginBottom: '24px' }}>
-              <MagnifyingGlass 
-                size={20} 
-                style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }}
-              />
-              <input 
+          <div className="downloads-search-panel">
+            <form onSubmit={handleSearch} className="downloads-search">
+              <MagnifyingGlass size={16} />
+              <input
+                className="downloads-search-input"
                 type="text"
-                placeholder="Search YouTube for tracks..."
+                placeholder="Search for a song to download"
                 value={query}
                 onChange={e => setQuery(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '16px 16px 16px 48px',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  border: '1px solid var(--divider)',
-                  borderRadius: '8px',
-                  color: 'var(--text-primary)',
-                  fontSize: '15px',
-                  outline: 'none'
-                }}
               />
             </form>
 
             {isSearching && (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: '40px', color: 'var(--text-tertiary)' }}>
-                <CircleNotch size={24} className="spinning-icon" />
+              <div className="inline-loading">
+                <CircleNotch size={18} className="spinning-icon" />
+                <span>Searching…</span>
               </div>
             )}
 
-            {!isSearching && results.map(res => (
-              <div key={res.id} style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '16px',
-                borderBottom: '1px solid var(--divider)'
-              }}>
-                <div>
-                  <div style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: 500 }}>
-                    {res.title}
+            {!isSearching && query.trim() && results.length === 0 && (
+              <div className="inline-empty">No results. Try a different search.</div>
+            )}
+
+            {!isSearching && results.length > 0 && (
+              <div className="download-results">
+                {results.map(res => (
+                  <div key={res.id} className="download-result-row">
+                    <div className="download-result-art">
+                      <img
+                        src={`https://i.ytimg.com/vi/${res.id}/mqdefault.jpg`}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        onError={handleThumbnailError}
+                      />
+                    </div>
+                    <div className="download-result-info">
+                      <div className="download-result-title" title={res.title}>{res.title}</div>
+                      <div className="download-result-meta">
+                        {res.artist || 'Unknown artist'}
+                        {res.duration ? ` · ${formatDuration(res.duration)}` : ''}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleDownload(res.id, res.title, res.artist)}
+                      className="btn-secondary"
+                    >
+                      <DownloadSimple size={14} />
+                      <span>Download</span>
+                    </button>
                   </div>
-                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                    {res.artist} &bull; {Math.floor(res.duration / 60)}:{String(res.duration % 60).padStart(2, '0')}
-                  </div>
-                </div>
-                <button 
-                  onClick={() => handleDownload(res.id, res.title, res.artist)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '8px 16px',
-                    backgroundColor: 'var(--accent)',
-                    color: '#000',
-                    border: 'none',
-                    borderRadius: '4px',
-                    fontWeight: 600,
-                    cursor: 'pointer'
-                  }}
-                >
-                  <DownloadSimple size={16} />
-                  Download
-                </button>
+                ))}
               </div>
-            ))}
+            )}
+
+            {!isSearching && !query.trim() && (
+              <div className="inline-empty">Search YouTube Music to download a song to your library.</div>
+            )}
           </div>
         )}
 
         {activeTab === 'active' && (
-          <div style={{ padding: '0 32px' }}>
-            {downloads.filter(d => d.status === 'downloading' || d.status === 'queued').length === 0 ? (
-              <div className="empty-library-state">
-                <div style={{ color: 'var(--text-secondary)' }}>No active downloads.</div>
-              </div>
+          <div className="download-list">
+            {activeDownloads.length === 0 ? (
+              <div className="inline-empty">Nothing is downloading right now.</div>
             ) : (
-              downloads.filter(d => d.status === 'downloading' || d.status === 'queued').map(res => (
-                <div key={res.id} style={{ padding: '16px', borderBottom: '1px solid var(--divider)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: 500 }}>
+              activeDownloads.map(res => (
+                <div key={res.id} className="download-row">
+                  <div className="download-row-icon">
+                    <CircleNotch size={15} className="spinning-icon" />
+                  </div>
+                  <div className="download-row-info">
+                    <div className="download-row-title" title={res.title || res.id}>
                       {res.title || res.id}
                     </div>
-                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <CircleNotch size={14} className="spinning-icon" /> {res.status} &bull; {res.artist || 'Unknown Artist'}
+                    <div className="download-row-meta">
+                      {statusLabel[res.status] || res.status} · {res.artist || 'Unknown artist'}
                     </div>
                   </div>
-                  <button 
+                  <button
                     onClick={() => handleCancel(res.id)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '32px',
-                      height: '32px',
-                      backgroundColor: 'transparent',
-                      color: 'var(--text-secondary)',
-                      border: '1px solid var(--divider)',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
+                    className="btn-icon"
                     title="Cancel download"
                   >
-                    <X size={16} />
+                    <X size={15} />
                   </button>
                 </div>
               ))
@@ -222,43 +220,30 @@ export function DownloadsView() {
         )}
 
         {activeTab === 'completed' && (
-          <div style={{ padding: '0 32px' }}>
-            {downloads.filter(d => d.status === 'completed' || d.status === 'failed' || d.status === 'cancelled').length === 0 ? (
-              <div className="empty-library-state">
-                <div style={{ color: 'var(--text-secondary)' }}>No completed downloads.</div>
-              </div>
+          <div className="download-list">
+            {finishedDownloads.length === 0 ? (
+              <div className="inline-empty">Finished downloads appear here.</div>
             ) : (
               <>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px', marginTop: '16px' }}>
-                  <button 
-                    onClick={handleClearLog}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '8px 16px',
-                      backgroundColor: 'rgba(255,255,255,0.05)',
-                      color: 'var(--text-secondary)',
-                      border: '1px solid var(--divider)',
-                      borderRadius: '4px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                  >
-                    <Trash size={16} />
-                    Clear Log
+                <div className="downloads-list-header">
+                  <span>Recent downloads</span>
+                  <button onClick={handleClearLog} className="btn-secondary">
+                    <Trash size={14} />
+                    <span>Clear history</span>
                   </button>
                 </div>
-                {downloads.filter(d => d.status === 'completed' || d.status === 'failed' || d.status === 'cancelled').map(res => (
-                  <div key={res.id} style={{ padding: '16px', borderBottom: '1px solid var(--divider)' }}>
-                    <div style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: 500 }}>
-                      {res.title || res.id}
+                {finishedDownloads.map(res => (
+                  <div key={res.id} className="download-row">
+                    <div className="download-row-icon">
+                      <MusicNote size={15} />
                     </div>
-                    <div style={{ fontSize: '13px', color: res.status === 'failed' ? '#f87171' : 'var(--text-secondary)', marginTop: '4px', textTransform: 'capitalize' }}>
-                      {res.status} &bull; {res.artist || 'Unknown Artist'}
+                    <div className="download-row-info">
+                      <div className="download-row-title" title={res.title || res.id}>
+                        {res.title || res.id}
+                      </div>
+                      <div className={`download-row-meta ${res.status === 'failed' ? 'is-error' : ''}`}>
+                        {statusLabel[res.status] || res.status} · {res.artist || 'Unknown artist'}
+                      </div>
                     </div>
                   </div>
                 ))}

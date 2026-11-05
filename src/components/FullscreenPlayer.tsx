@@ -1,7 +1,9 @@
+import { useShallow } from 'zustand/react/shallow';
 import { useEffect, useState } from 'react';
-import { usePlayerStore } from '../store/player';
+import { usePlayerStore, isYouTubeTrack } from '../store/player';
 import { useLibraryStore, getArtworkUrl } from '../store/library';
-import { CaretDown, Disc, Quotes, Play, Pause, SkipBack, SkipForward } from '@phosphor-icons/react';
+import { handleThumbnailError } from '../utils/thumbnail';
+import { CaretDown, Disc, Quotes, Play, Pause, SkipBack, SkipForward, YoutubeLogo } from '@phosphor-icons/react';
 import { FullscreenLyrics } from './FullscreenLyrics';
 import './FullscreenPlayer.css';
 
@@ -11,7 +13,15 @@ interface Props {
 }
 
 export function FullscreenPlayer({ isOpen, onClose }: Props) {
-  const { queue, currentIndex, isPlaying, pause, resume, next, prev } = usePlayerStore();
+  const { queue, currentIndex, isPlaying, pause, resume, next, prev } = usePlayerStore(useShallow(s => ({
+    queue: s.queue,
+    currentIndex: s.currentIndex,
+    isPlaying: s.isPlaying,
+    pause: s.pause,
+    resume: s.resume,
+    next: s.next,
+    prev: s.prev,
+  })));
   const { tracks } = useLibraryStore();
   const [show, setShow] = useState(isOpen);
   const [render, setRender] = useState(isOpen);
@@ -46,6 +56,7 @@ export function FullscreenPlayer({ isOpen, onClose }: Props) {
   if (!freshCurrentTrack) return null;
 
   const artUrl = getArtworkUrl(freshCurrentTrack.art_hash);
+  const isOnline = isYouTubeTrack(freshCurrentTrack);
 
   return (
     <div className={`fullscreen-player-overlay ${show ? 'visible' : ''}`}>
@@ -57,7 +68,7 @@ export function FullscreenPlayer({ isOpen, onClose }: Props) {
       <div className="fullscreen-bg-dim" />
 
       {/* Close button */}
-      <button className="fullscreen-close" onClick={onClose}>
+      <button className="fullscreen-close" onClick={onClose} title="Close fullscreen" aria-label="Close fullscreen">
         <CaretDown size={32} />
       </button>
 
@@ -65,7 +76,8 @@ export function FullscreenPlayer({ isOpen, onClose }: Props) {
       <button 
         className={`fullscreen-toggle-lyrics ${showLyrics ? 'active' : ''}`} 
         onClick={() => setShowLyrics(!showLyrics)}
-        title="Toggle Lyrics"
+        title={showLyrics ? 'Hide lyrics' : 'Show lyrics'}
+        aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'}
       >
         <Quotes size={24} weight={showLyrics ? "bold" : "regular"} />
       </button>
@@ -75,7 +87,14 @@ export function FullscreenPlayer({ isOpen, onClose }: Props) {
         <div className="fullscreen-left-col">
           <div className="fullscreen-art-container">
             {artUrl ? (
-              <img src={artUrl} alt="Album Art" className="fullscreen-art-img" />
+              <img
+                src={artUrl}
+                alt="Album Art"
+                className="fullscreen-art-img"
+                loading="eager"
+                decoding="async"
+                onError={handleThumbnailError}
+              />
             ) : (
               <div className="fullscreen-art-placeholder">
                 <Disc size={120} />
@@ -85,15 +104,37 @@ export function FullscreenPlayer({ isOpen, onClose }: Props) {
 
           <div className="fullscreen-info">
             <h1 className="fullscreen-title">
-              {freshCurrentTrack.title || freshCurrentTrack.path.split(/[\\/]/).pop()?.replace(/\.[^/.]+$/, '') || 'Unknown Title'}
+              {freshCurrentTrack.title || freshCurrentTrack.path.split(/[\\/]/).pop()?.replace(/\.[^/.]+$/, '') || 'Unknown title'}
             </h1>
             <h2 className="fullscreen-artist">
-              {freshCurrentTrack.artist || 'Unknown Artist'}
+              {freshCurrentTrack.artist || 'Unknown artist'}
             </h2>
             {freshCurrentTrack.album && (
               <h3 className="fullscreen-album">
                 {freshCurrentTrack.album}
               </h3>
+            )}
+            {isOnline && (
+              <div style={{ marginTop: 8 }}>
+                <span
+                  title="Playing from YouTube Music"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '3px 9px',
+                    borderRadius: 'var(--radius-xs)',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    backgroundColor: 'rgba(239, 68, 68, 0.16)',
+                    color: '#f87171',
+                    letterSpacing: 0,
+                  }}
+                >
+                  <YoutubeLogo size={13} weight="regular" />
+                  <span>YouTube Music</span>
+                </span>
+              </div>
             )}
           </div>
         </div>

@@ -4,7 +4,28 @@ use std::path::PathBuf;
 pub fn init(app_data_dir: PathBuf) -> Result<Connection> {
     std::fs::create_dir_all(&app_data_dir).ok();
     let db_path = app_data_dir.join("library.db");
-    let conn = Connection::open(db_path)?;
+
+    // Attempt to open normally; if it fails (locked/corrupt WAL), wipe stale files and retry
+    let conn_res = Connection::open(&db_path).or_else(|_| {
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_file(format!("{}-shm", db_path.display()));
+        let _ = std::fs::remove_file(format!("{}-wal", db_path.display()));
+        Connection::open(&db_path)
+    });
+
+    let conn = match conn_res {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "Warning: could not open database in app_data_dir: {:?}. Using fallback local DB.",
+                e
+            );
+            let fallback_path = std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join("library.db");
+            Connection::open(&fallback_path)?
+        }
+    };
 
     conn.execute_batch(
         "
@@ -62,6 +83,13 @@ pub fn init(app_data_dir: PathBuf) -> Result<Connection> {
             source TEXT,
             fetched_at INTEGER
         );
+        CREATE TABLE IF NOT EXISTS yt_stream_cache (
+            video_id TEXT PRIMARY KEY,
+            url TEXT NOT NULL,
+            resolved_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_yt_stream_resolved
+            ON yt_stream_cache(resolved_at);
         CREATE TABLE IF NOT EXISTS downloads (
             id TEXT PRIMARY KEY,
             url TEXT NOT NULL,

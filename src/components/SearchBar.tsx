@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react';
+﻿import { useRef, useEffect, useState } from 'react';
 import { useSearchStore } from '../store/search';
 import { MagnifyingGlass, X, CircleNotch } from '@phosphor-icons/react';
 
@@ -45,7 +45,7 @@ export function SearchBar() {
         ref={inputRef}
         type="text"
         className="search-input"
-        placeholder="Search tracks, artists, albums..."
+        placeholder="Search songs, artists, albums…"
         value={localQuery}
         onChange={(e) => setLocalQuery(e.target.value)}
       />

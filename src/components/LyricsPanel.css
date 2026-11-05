@@ -1,0 +1,247 @@
+/* ==========================================================================
+   Lyrics Panel (Apple Music Inspector Drawer)
+   ========================================================================== */
+
+.lyrics-panel-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+  background-color: var(--bg-sidebar);
+}
+
+/* Fixed Header Bar with Provider Selection Pill & Sync Controls */
+.lyrics-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background-color: var(--surface-panel);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  gap: 8px;
+  z-index: 10;
+}
+
+/* Apple Music Styled Lyrics Provider Pill */
+.lyrics-provider-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-element);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-system);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all var(--dur-fast) var(--ease);
+}
+
+.lyrics-provider-btn:hover {
+  background-color: var(--surface-hover);
+  border-color: var(--border-contrast);
+  color: var(--text-bright);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.lyrics-provider-btn:active {
+  background-color: var(--surface-active);
+  transform: scale(0.98);
+}
+
+.lyrics-provider-icon {
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.lyrics-provider-name {
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.lyrics-provider-caret {
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.lyrics-provider-btn:hover .lyrics-provider-caret {
+  color: var(--text-secondary);
+}
+
+/* Header Sync Offset Widget */
+.lyrics-sync-widget {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background-color: var(--surface-element);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 2px 4px;
+}
+
+.lyrics-sync-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--dur-fast);
+}
+
+.lyrics-sync-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.lyrics-sync-btn:active {
+  transform: scale(0.92);
+}
+
+.lyrics-sync-value {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  min-width: 40px;
+  text-align: center;
+  user-select: none;
+}
+
+.lyrics-sync-value.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Scrollable Lyrics Container */
+.lyrics-scroll-container {
+  flex: 1;
+  position: relative;
+  width: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 40% 20px;
+  mask-image: linear-gradient(to bottom, transparent, black 12%, black 88%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 12%, black 88%, transparent);
+}
+
+.lyrics-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
+.lyrics-scroll-area {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* Individual Synced Lyric Line (Apple Music Style) */
+.lyric-line-item {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.35;
+  margin-bottom: 18px;
+  color: white;
+  opacity: max(0.06, calc(0.42 - var(--distance, 0) * 0.11));
+  cursor: pointer;
+  transition: all 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: left center;
+  filter: blur(calc(var(--distance, 0) * 1.8px));
+  transform: scale(calc(1 - var(--distance, 0) * 0.025)) translateX(calc(var(--distance, 0) * -2px));
+  user-select: none;
+}
+
+.lyric-line-item:hover {
+  opacity: 0.85;
+  filter: blur(0px);
+}
+
+.lyric-line-item.is-active {
+  opacity: 1;
+  transform: scale(1.05) translateX(0);
+  filter: blur(0px);
+}
+
+.is-waiting .lyric-line-item {
+  opacity: 1;
+  filter: blur(0px);
+  transform: scale(1) translateX(0);
+}
+
+/* Plain text fallback */
+.lyrics-plain-text {
+  white-space: pre-wrap;
+  font-family: var(--font-system);
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  padding: 24px 16px;
+  text-align: center;
+}
+
+/* Empty states */
+.lyrics-empty-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+}
+
+.lyrics-empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.lyrics-empty-sub {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  margin-bottom: 16px;
+}
+
+.lyrics-choose-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-element);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-system);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease);
+}
+
+.lyrics-choose-btn:hover {
+  background-color: var(--surface-hover);
+  border-color: var(--border-contrast);
+  color: var(--text-bright);
+}

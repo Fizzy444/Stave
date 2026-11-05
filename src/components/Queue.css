@@ -1,0 +1,310 @@
+/* ==========================================================================
+   Apple Music Style Combined Queue & Auto Play Drawer
+   ========================================================================== */
+
+.queue-panel-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg-sidebar);
+  position: relative;
+}
+
+/* Now Playing Top Card */
+.queue-now-playing-section {
+  padding: 10px 14px;
+  background-color: var(--surface-panel);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.queue-now-playing-card {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  gap: 10px;
+  background-color: var(--surface-active);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.queue-now-playing-indicator {
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Split Panes */
+.queue-split-top {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: flex 0.2s var(--ease);
+}
+
+.queue-split-divider {
+  height: 1px;
+  background-color: var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.queue-split-bottom {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: flex 0.2s var(--ease);
+}
+
+/* Section Header Bar */
+.queue-section-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background-color: var(--surface-panel);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.queue-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.queue-header-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  background-color: var(--surface-element);
+  border: 1px solid var(--border-subtle);
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+}
+
+.queue-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  transition: color var(--dur-fast);
+}
+
+.queue-clear-btn:hover {
+  color: var(--text-primary);
+}
+
+/* Scroll Area */
+.queue-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Inner Sections */
+.queue-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.queue-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 4px 4px;
+}
+
+.queue-section-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+
+.queue-section-action-btn {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  transition: color 0.15s ease;
+}
+
+.queue-section-action-btn:hover {
+  color: var(--text-primary);
+}
+
+/* Track rows */
+.queue-track-row {
+  display: flex;
+  align-items: center;
+  padding: 5px 8px;
+  gap: 8px;
+  border-radius: var(--radius-sm);
+  background-color: transparent;
+  transition: background-color 0.12s ease;
+  user-select: none;
+}
+
+.queue-track-row:hover {
+  background-color: var(--surface-hover);
+}
+
+.queue-track-row.is-current {
+  background-color: var(--surface-active);
+}
+
+.queue-track-num {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.queue-track-drag-handle {
+  cursor: grab;
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.queue-track-drag-handle:active {
+  cursor: grabbing;
+}
+
+.queue-track-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.queue-track-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.queue-track-title-row.is-current {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.queue-track-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-track-artist-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+.queue-track-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  flex-shrink: 0;
+}
+
+.queue-track-row:hover .queue-track-actions {
+  opacity: 1;
+}
+
+.queue-yt-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  font-size: 9px;
+  font-weight: 600;
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  flex-shrink: 0;
+  line-height: 1.1;
+}
+
+/* Auto play Specific */
+.autoplay-hero-seed {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 6px 14px 2px 14px;
+  background: transparent;
+  line-height: 1.3;
+  flex-shrink: 0;
+}
+
+.autoplay-hero-seed strong {
+  color: var(--text-primary);
+}
+
+.autoplay-toggle-pill {
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-element);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.autoplay-toggle-pill:hover {
+  color: var(--text-primary);
+  border-color: var(--border-contrast);
+}
+
+.autoplay-toggle-pill.active {
+  background-color: var(--accent);
+  color: var(--accent-contrast, #000000);
+  border-color: var(--accent);
+}
+
+.autoplay-skeleton-row {
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-element);
+  margin-bottom: 4px;
+}

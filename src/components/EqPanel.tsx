@@ -60,7 +60,7 @@ function VerticalFader({
   const fillPct = ((value - min) / (max - min)) * 100;
   // zero-line percentage (where 0dB sits)
   const zeroPct = ((0 - min) / (max - min)) * 100;
-  const displayVal = value > 0 ? `+${value}` : `${value}`;
+  const displayVal = value > 0 ? `+${value.toFixed(1)}` : `${value.toFixed(1)}`;
 
   return (
     <div className="eq-fader-col">
@@ -118,8 +118,12 @@ export function EqPanel() {
       {/* Top Controls */}
       <div className="eq-top-bar">
         <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Equalizer</div>
-          <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>10-Band Output Tuning</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-system)' }}>
+            Equalizer
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'var(--font-system)', marginTop: 2 }}>
+            Shape the tone of your music
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -127,29 +131,46 @@ export function EqPanel() {
             className={`btn-secondary ${isEnabled ? 'active' : ''}`}
             onClick={toggleEnabled}
             style={{
-              fontSize: 11.5,
-              height: 26,
-              padding: '0 10px',
-              color: isEnabled ? 'var(--text-primary)' : 'var(--text-tertiary)',
+              fontFamily: 'var(--font-system)',
+              fontSize: 11,
+              fontWeight: 600,
+              height: 28,
+              padding: '0 12px',
+              borderRadius: 'var(--radius-sm)',
+              border: `1px solid ${isEnabled ? 'var(--accent)' : 'var(--border-contrast)'}`,
+              background: isEnabled ? 'var(--accent)' : 'var(--surface-element)',
+              color: isEnabled ? 'var(--accent-contrast, #000)' : 'var(--text-tertiary)',
             }}
           >
-            {isEnabled ? 'On' : 'Bypass'}
+            {isEnabled ? 'On' : 'Off'}
           </button>
 
           <button
-            className="btn-icon"
+            className="btn-secondary"
             onClick={handleReset}
-            title="Reset to Flat"
-            style={{ width: 26, height: 26 }}
+            title="Reset to flat (0 dB)"
+            style={{
+              fontFamily: 'var(--font-system)',
+              fontSize: 11,
+              fontWeight: 500,
+              height: 28,
+              padding: '0 12px',
+              borderRadius: 'var(--radius-sm)',
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
           >
-            <ArrowCounterClockwise size={13} />
+            <ArrowCounterClockwise size={12} />
+            <span>Flat</span>
           </button>
         </div>
       </div>
 
       {/* Presets */}
       <div>
-        <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.04em', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 6 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: 6, fontFamily: 'var(--font-system)' }}>
           Presets
         </div>
         <div className="eq-presets-wrap">

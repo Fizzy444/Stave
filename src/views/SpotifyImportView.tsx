@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { DownloadSimple, MagnifyingGlass, Check, CaretDown, CaretRight } from '@phosphor-icons/react';
+import { DownloadSimple, MagnifyingGlass, Check, CaretDown, CaretRight, SpotifyLogo, CircleNotch } from '@phosphor-icons/react';
 
 interface SpotifyTrack {
   title: string;
@@ -30,11 +30,11 @@ interface MatchState {
 
 export function SpotifyImportView() {
   const [playlistUrl, setPlaylistUrl] = useState('');
-  
+
   const [isFetching, setIsFetching] = useState(false);
   const [error, setError] = useState('');
   const [playlist, setPlaylist] = useState<SpotifyPlaylist | null>(null);
-  
+
   const [matches, setMatches] = useState<MatchState[]>([]);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
@@ -52,8 +52,8 @@ export function SpotifyImportView() {
     setError('');
     try {
       const pid = extractPlaylistId(playlistUrl);
-      const res = await invoke<SpotifyPlaylist>('fetch_spotify_playlist', { 
-        playlistId: pid 
+      const res = await invoke<SpotifyPlaylist>('fetch_spotify_playlist', {
+        playlistId: pid
       });
       setPlaylist(res);
       setMatches(res.tracks.map(t => ({
@@ -75,24 +75,27 @@ export function SpotifyImportView() {
 
       setMatches(prev => {
         const next = [...prev];
-        next[i].status = 'searching';
+        next[i] = { ...next[i], status: 'searching' };
         return next;
       });
 
       try {
         const query = `${matches[i].spotify.title} - ${matches[i].spotify.artist}`;
         const res = await invoke<YTSearchResult[]>('search_youtube', { query });
-        
+
         setMatches(prev => {
           const next = [...prev];
-          next[i].ytMatches = res;
-          next[i].status = res.length > 0 ? 'matched' : 'failed';
+          next[i] = {
+            ...next[i],
+            ytMatches: res,
+            status: res.length > 0 ? 'matched' : 'failed'
+          };
           return next;
         });
       } catch (e) {
         setMatches(prev => {
           const next = [...prev];
-          next[i].status = 'failed';
+          next[i] = { ...next[i], status: 'failed' };
           return next;
         });
       }
@@ -103,7 +106,7 @@ export function SpotifyImportView() {
     for (let i = 0; i < matches.length; i++) {
       const match = matches[i];
       if (match.status !== 'matched') continue;
-      
+
       const selected = match.ytMatches[match.selectedIndex];
       if (!selected) continue;
 
@@ -113,10 +116,10 @@ export function SpotifyImportView() {
           title: match.spotify.title,
           artist: match.spotify.artist
         });
-        
+
         setMatches(prev => {
           const next = [...prev];
-          next[i].status = 'queued';
+          next[i] = { ...next[i], status: 'queued' };
           return next;
         });
       } catch (e) {
@@ -131,155 +134,169 @@ export function SpotifyImportView() {
     return `${m}:${(s % 60).toString().padStart(2, '0')}`;
   };
 
+  const readyCount = matches.filter(m => m.status === 'matched').length;
+
   return (
-    <div className="view-container" style={{ display: 'flex', flexDirection: 'column' }}>
-      <div className="view-header" style={{ flexShrink: 0, padding: '48px 32px 0 32px' }}>
-        <h2 style={{ fontSize: '32px', fontWeight: 700, margin: 0, color: 'var(--text-primary)', letterSpacing: '-1px' }}>
-          Spotify Import
-        </h2>
-        
-        {!playlist && (
-          <form onSubmit={handleFetch} style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '600px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Playlist URL or ID</label>
-              <input 
-                type="text" 
-                className="search-input"
-                style={{ width: '100%', height: '40px', borderRadius: '4px' }}
-                value={playlistUrl} 
-                onChange={e => setPlaylistUrl(e.target.value)} 
-                placeholder="https://open.spotify.com/playlist/..." 
-                required
-              />
+    <div className="view-container spotify-view">
+      <header className="page-header">
+        <div className="page-header-text">
+          <h1 className="page-title">Import from Spotify</h1>
+          <p className="page-subtitle">
+            Bring a Spotify playlist into your library as downloads.
+          </p>
+        </div>
+      </header>
+
+      <div className="view-content spotify-body">
+        {!playlist ? (
+          <div className="spotify-import-card">
+            <div className="spotify-import-heading">
+              <SpotifyLogo size={20} weight="fill" color="#1db954" />
+              <span>Import a playlist</span>
+            </div>
+            <form onSubmit={handleFetch} className="spotify-import-form">
+              <label className="spotify-import-label" htmlFor="spotify-playlist-url">
+                Playlist link
+              </label>
+              <div className="spotify-import-row">
+                <input
+                  id="spotify-playlist-url"
+                  type="text"
+                  className="form-input"
+                  value={playlistUrl}
+                  onChange={e => setPlaylistUrl(e.target.value)}
+                  placeholder="https://open.spotify.com/playlist/…"
+                  required
+                />
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={isFetching}
+                >
+                  {isFetching ? (
+                    <>
+                      <CircleNotch size={14} className="spinning-icon" />
+                      <span>Reading playlist…</span>
+                    </>
+                  ) : (
+                    <span>Open playlist</span>
+                  )}
+                </button>
+              </div>
+              {error && <div className="spotify-error">{error}</div>}
+              <p className="spotify-hint">
+                Public playlists only. Stave matches each song to YouTube Music before downloading.
+              </p>
+            </form>
+          </div>
+        ) : (
+          <div className="spotify-playlist">
+            <div className="spotify-playlist-bar">
+              <div className="spotify-playlist-heading">
+                <div className="spotify-playlist-title">{playlist.name}</div>
+                <div className="spotify-playlist-meta">
+                  {playlist.tracks.length} {playlist.tracks.length === 1 ? 'song' : 'songs'}
+                  {readyCount > 0 ? ` · ${readyCount} matched` : ''}
+                </div>
+              </div>
+              <div className="spotify-playlist-actions">
+                <button onClick={findMatches} className="btn-secondary">
+                  <MagnifyingGlass size={14} />
+                  <span>Find matches</span>
+                </button>
+                <button onClick={handleImport} className="btn-primary">
+                  <DownloadSimple size={14} weight="bold" />
+                  <span>Download matches</span>
+                </button>
+              </div>
             </div>
 
-            {error && <div style={{ color: '#f87171', fontSize: '13px' }}>{error}</div>}
+            <div className="spotify-match-list">
+              {matches.map((match, index) => {
+                const selectedMatch = match.ytMatches[match.selectedIndex];
+                return (
+                  <div key={index} className="spotify-match-card">
+                    <div
+                      className="spotify-match-row"
+                      onClick={() => setExpandedIndex(expandedIndex === index ? null : index)}
+                    >
+                      <div className="spotify-match-caret">
+                        {expandedIndex === index ? <CaretDown size={14} /> : <CaretRight size={14} />}
+                      </div>
+                      <div className="spotify-match-grid">
+                        <div className="spotify-match-col">
+                          <div className="spotify-match-label">Spotify</div>
+                          <div className="spotify-match-title">{match.spotify.title}</div>
+                          <div className="spotify-match-meta">
+                            {match.spotify.artist} · {formatDuration(match.spotify.duration_ms)}
+                          </div>
+                        </div>
 
-            <button type="submit" disabled={isFetching} style={{
-              background: 'var(--text-primary)', color: 'var(--bg-base)', padding: '12px 24px',
-              border: 'none', borderRadius: '24px', fontWeight: 600, alignSelf: 'flex-start',
-              cursor: 'pointer', marginTop: '8px'
-            }}>
-              {isFetching ? 'Fetching...' : 'Fetch Playlist'}
-            </button>
-            <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '8px' }}>
-              Only public playlists are supported.
+                        <div className="spotify-match-col">
+                          <div className="spotify-match-label">Match</div>
+                          {match.status === 'pending' && (
+                            <div className="spotify-match-status">Waiting</div>
+                          )}
+                          {match.status === 'searching' && (
+                            <div className="spotify-match-status">
+                              <CircleNotch size={12} className="spinning-icon" /> Searching…
+                            </div>
+                          )}
+                          {match.status === 'failed' && (
+                            <div className="spotify-match-status is-error">No match found</div>
+                          )}
+                          {match.status === 'queued' && (
+                            <div className="spotify-match-status is-success">
+                              <Check size={13} /> Added to downloads
+                            </div>
+                          )}
+                          {match.status === 'matched' && selectedMatch && (
+                            <>
+                              <div className="spotify-match-title" title={selectedMatch.title}>
+                                {selectedMatch.title}
+                              </div>
+                              <div className="spotify-match-meta">
+                                {selectedMatch.artist} · {formatDuration(selectedMatch.duration * 1000)}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {expandedIndex === index && match.ytMatches.length > 0 && (
+                      <div className="spotify-alternatives">
+                        <div className="spotify-alternatives-label">Alternative matches</div>
+                        {match.ytMatches.map((ytm, yi) => (
+                          <button
+                            key={ytm.id}
+                            className={`spotify-alt-row ${yi === match.selectedIndex ? 'is-selected' : ''}`}
+                            onClick={() => {
+                              setMatches(prev => {
+                                const next = [...prev];
+                                next[index] = { ...next[index], selectedIndex: yi };
+                                return next;
+                              });
+                            }}
+                          >
+                            <div className="spotify-alt-info">
+                              <div className="spotify-alt-title" title={ytm.title}>{ytm.title}</div>
+                              <div className="spotify-alt-meta">
+                                {ytm.artist} · {formatDuration(ytm.duration * 1000)}
+                              </div>
+                            </div>
+                            {yi === match.selectedIndex && <Check size={15} />}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          </form>
+          </div>
         )}
       </div>
-
-      {playlist && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ padding: '24px 32px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text-primary)' }}>{playlist.name}</div>
-              <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>{playlist.tracks.length} tracks</div>
-            </div>
-            <div style={{ display: 'flex', gap: '16px' }}>
-              <button 
-                onClick={findMatches}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', padding: '8px 16px',
-                  border: 'none', borderRadius: '16px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'
-                }}
-              >
-                <MagnifyingGlass size={16} /> Auto Match
-              </button>
-              <button 
-                onClick={handleImport}
-                style={{
-                  background: 'var(--text-primary)', color: 'var(--bg-base)', padding: '8px 16px',
-                  border: 'none', borderRadius: '16px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'
-                }}
-              >
-                <DownloadSimple size={16} weight="bold" /> Queue Selected
-              </button>
-            </div>
-          </div>
-
-          <div style={{ flex: 1, overflowY: 'auto', padding: '0 32px 32px 32px' }}>
-            {matches.map((match, index) => {
-              const selectedMatch = match.ytMatches[match.selectedIndex];
-              return (
-                <div key={index} style={{ 
-                  backgroundColor: 'rgba(255, 255, 255, 0.03)', 
-                  borderRadius: '8px', 
-                  marginBottom: '8px',
-                  border: '1px solid var(--divider)'
-                }}>
-                  <div 
-                    style={{ padding: '16px', display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-                    onClick={() => setExpandedIndex(expandedIndex === index ? null : index)}
-                  >
-                    <div style={{ color: 'var(--text-tertiary)', marginRight: '16px' }}>
-                      {expandedIndex === index ? <CaretDown size={16} /> : <CaretRight size={16} />}
-                    </div>
-                    <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                      {/* Spotify Side */}
-                      <div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>SPOTIFY</div>
-                        <div style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: 500 }}>
-                          {match.spotify.title}
-                        </div>
-                        <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                          {match.spotify.artist} • {formatDuration(match.spotify.duration_ms)}
-                        </div>
-                      </div>
-                      
-                      {/* YouTube Side */}
-                      <div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>MATCH</div>
-                        {match.status === 'pending' && <div style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>Waiting...</div>}
-                        {match.status === 'searching' && <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Searching YouTube...</div>}
-                        {match.status === 'failed' && <div style={{ fontSize: '13px', color: '#f87171' }}>No Match Found</div>}
-                        {match.status === 'queued' && <div style={{ fontSize: '13px', color: '#4ade80', display: 'flex', alignItems: 'center', gap: '4px' }}><Check size={14} /> Added to Downloads</div>}
-                        {match.status === 'matched' && selectedMatch && (
-                          <div>
-                            <div style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {selectedMatch.title}
-                            </div>
-                            <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                              {selectedMatch.artist} • {formatDuration(selectedMatch.duration * 1000)}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {expandedIndex === index && match.ytMatches.length > 0 && (
-                    <div style={{ padding: '16px', borderTop: '1px solid var(--divider)', backgroundColor: 'rgba(0, 0, 0, 0.2)' }}>
-                      <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>Alternative Matches</div>
-                      {match.ytMatches.map((ytm, yi) => (
-                        <div 
-                          key={ytm.id} 
-                          onClick={() => {
-                            const next = [...matches];
-                            next[index].selectedIndex = yi;
-                            setMatches(next);
-                          }}
-                          style={{
-                            display: 'flex', alignItems: 'center', padding: '12px', borderRadius: '4px', cursor: 'pointer',
-                            backgroundColor: yi === match.selectedIndex ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                            marginBottom: '4px'
-                          }}
-                        >
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: '14px', color: 'var(--text-primary)' }}>{ytm.title}</div>
-                            <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{ytm.artist} • {formatDuration(ytm.duration * 1000)}</div>
-                          </div>
-                          {yi === match.selectedIndex && <Check size={16} color="var(--text-primary)" />}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

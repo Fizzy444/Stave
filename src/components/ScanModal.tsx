@@ -45,27 +45,25 @@ export function ScanModal({ isOpen, onClose }: ScanModalProps) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
+      <div className="modal-dialog scan-dialog" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header scan-header">
           <div>
-            <h3 className="modal-title">Add Folder</h3>
-            <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginTop: 2 }}>
-              Index music files into your local library
-            </div>
+            <h3 className="modal-title">Add music</h3>
+            <p className="scan-subtitle">Choose a folder to add its songs to your library.</p>
           </div>
-          <button className="btn-icon" onClick={onClose}>
+          <button className="btn-icon" onClick={onClose} aria-label="Close">
             <X size={16} />
           </button>
         </div>
 
         <div className="form-group">
-          <label className="form-label">Folder Path</label>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <label className="form-label" htmlFor="scan-folder">Folder</label>
+          <div className="scan-folder-row">
             <input
+              id="scan-folder"
               type="text"
               className="form-input"
-              style={{ flex: 1 }}
-              placeholder="e.g. C:\Users\Mithun\Music"
+              placeholder="Paste a folder path, or browse"
               value={folderPath}
               onChange={(e) => setFolderPath(e.target.value)}
               onKeyDown={(e) => {
@@ -74,43 +72,45 @@ export function ScanModal({ isOpen, onClose }: ScanModalProps) {
               }}
               autoFocus
             />
-            <button 
-              className="btn-secondary" 
-              style={{ padding: '0 12px' }} 
+            <button
+              className="btn-secondary scan-browse-btn"
               onClick={handleSelectFolder}
-              title="Browse for folder"
+              title="Choose a folder"
             >
-              <FolderOpen size={18} />
+              <FolderOpen size={15} />
+              Browse
             </button>
           </div>
         </div>
 
-        <div>
-          <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.04em', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 6 }}>
-            Quick Paths
+        {presetPaths.length > 0 && (
+          <div className="scan-presets">
+            <div className="scan-presets-label">Suggested folders</div>
+            <div className="scan-preset-list">
+              {presetPaths.map((p) => (
+                <button
+                  key={p}
+                  className="btn-secondary scan-preset"
+                  onClick={() => {
+                    setFolderPath(p);
+                    handleScan(p);
+                  }}
+                  title={`Scan ${p}`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {presetPaths.map((p) => (
-              <button
-                key={p}
-                className="btn-secondary"
-                style={{ fontSize: 11.5, height: 26, padding: '0 8px' }}
-                onClick={() => {
-                  setFolderPath(p);
-                  handleScan(p);
-                }}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
+        )}
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
-          <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)' }}>
-            {tracks.length > 0 && `${tracks.length} tracks indexed`}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+        <div className="scan-footer">
+          <span className="scan-count">
+            {tracks.length === 0
+              ? 'No songs yet'
+              : `${tracks.length.toLocaleString()} ${tracks.length === 1 ? 'song' : 'songs'} in your library`}
+          </span>
+          <div className="scan-actions">
             <button className="btn-secondary" onClick={onClose} disabled={isScanning}>
               Cancel
             </button>
@@ -122,10 +122,10 @@ export function ScanModal({ isOpen, onClose }: ScanModalProps) {
               {isScanning ? (
                 <>
                   <CircleNotch size={14} className="spinning-icon" />
-                  <span>Scanning...</span>
+                  <span>Scanning…</span>
                 </>
               ) : (
-                'Scan'
+                'Scan folder'
               )}
             </button>
           </div>

@@ -1,250 +1,171 @@
 import { useLibraryStore, getArtworkUrl, Track } from '../store/library';
+import { handleThumbnailError } from '../utils/thumbnail';
 import { usePlayerStore } from '../store/player';
 import { TrackRow } from '../components/TrackRow';
 import { TagEditor } from '../components/TagEditor';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
+import { Play, Disc, ArrowLeft, Shuffle, Plus } from '@phosphor-icons/react';
 
-const CACHE_KEY = 'stave_artist_images_v5';
-let artistImageCache: Record<string, string> = {};
-try {
-  artistImageCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
-} catch (e) { }
-
-const fetchArtistImage = async (artistName: string) => {
-  if (artistImageCache[artistName]) return artistImageCache[artistName];
-  try {
-    const searchRes = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(artistName)}&entity=musicArtist&limit=1`);
-    const searchData = await searchRes.json();
-    
-    if (searchData.results && searchData.results.length > 0) {
-      const artistId = searchData.results[0].artistId;
-      
-      const lookupRes = await fetch(`https://itunes.apple.com/lookup?id=${artistId}&entity=album&limit=10`);
-      const lookupData = await lookupRes.json();
-      
-      const albums = lookupData.results.filter((r: any) => r.wrapperType === 'collection');
-      
-      let bestAlbum = albums.find((a: any) => a.artistName.toLowerCase() === artistName.toLowerCase());
-      if (!bestAlbum && albums.length > 0) {
-        bestAlbum = albums[0];
-      }
-      
-      if (bestAlbum && bestAlbum.artworkUrl100) {
-        const url = bestAlbum.artworkUrl100.replace('100x100bb', '600x600bb');
-        artistImageCache[artistName] = url;
-        localStorage.setItem(CACHE_KEY, JSON.stringify(artistImageCache));
-        return url;
-      }
-    }
-  } catch (e) {
-    console.error("Failed to fetch artist image:", e);
-  }
-  return null;
-};
-
-const ArtistCard = ({ artist, count, onClick }: { artist: string; count: number; onClick: () => void }) => {
-  const [imgUrl, setImgUrl] = useState<string | null>(null);
-  const [isHovered, setIsHovered] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    fetchArtistImage(artist).then(url => {
-      if (active && url) setImgUrl(url);
-    });
-    return () => { active = false; };
-  }, [artist]);
-
-  return (
-    <div
-      onClick={onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        cursor: 'pointer',
-        gap: '12px'
-      }}
-    >
-      <div style={{ 
-        width: '100%', 
-        aspectRatio: '1/1', 
-        borderRadius: '50%', 
-        overflow: 'hidden', 
-        backgroundColor: 'oklch(0.2 0 0)',
-        boxShadow: isHovered ? '0 12px 24px rgba(0,0,0,0.4)' : '0 4px 12px rgba(0,0,0,0.2)',
-        transition: 'all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)'
-      }}>
-        {imgUrl ? (
-          <img src={imgUrl} alt={artist} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        ) : (
-          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)', fontSize: '24px' }}>♪</div>
-        )}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', width: '100%' }}>
-        <div style={{ 
-          fontWeight: 600, 
-          fontSize: '14px', 
-          color: 'var(--text-primary)', 
-          textAlign: 'center', 
-          width: '100%', 
-          whiteSpace: 'nowrap', 
-          overflow: 'hidden', 
-          textOverflow: 'ellipsis' 
-        }}>
-          {artist}
-        </div>
-        <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontWeight: 500 }}>
-          {count} {count === 1 ? 'song' : 'songs'}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const TrackCard = ({ track, onClick }: { track: Track; onClick: () => void }) => {
+const MediaCard = ({ track, onClick }: { track: Track; onClick: () => void }) => {
   const artUrl = getArtworkUrl(track.art_hash);
-  const [isHovered, setIsHovered] = useState(false);
+  const isYt = track.source === 'youtube'
+    || (track.path != null && track.path.startsWith('yt:'))
+    || (typeof track.id === 'string' && track.id.startsWith('yt_'));
+  const ext = isYt
+    ? null
+    : (track.path && !track.path.startsWith('http') ? (track.path.split('.').pop()?.toUpperCase() || 'PCM') : null);
+  const title = track.title || (isYt ? 'YouTube track' : track.path.split(/[\\/]/).pop() || 'Untitled');
 
   return (
-    <div
-      onClick={onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        cursor: 'pointer',
-        gap: '10px'
-      }}
-    >
-      <div style={{ 
-        width: '100%', 
-        aspectRatio: '1/1', 
-        borderRadius: '10px', 
-        overflow: 'hidden', 
-        backgroundColor: 'oklch(0.2 0 0)',
-        boxShadow: isHovered ? '0 12px 24px rgba(0,0,0,0.4)' : '0 4px 12px rgba(0,0,0,0.2)',
-        transition: 'all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)',
-        position: 'relative'
-      }}>
+    <button className="media-card" onClick={onClick} title={`Play ${title}`}>
+      <div className="media-card-art">
         {artUrl ? (
-          <img src={artUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <img
+            src={artUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            onError={handleThumbnailError}
+          />
         ) : (
-          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)', fontSize: '24px' }}>♪</div>
+          <Disc size={34} />
         )}
-        
-        {/* Subtle Play Overlay */}
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          backgroundColor: 'rgba(0,0,0,0.4)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          opacity: isHovered ? 1 : 0,
-          transition: 'opacity 0.2s'
-        }}>
-           <div style={{
-             width: '40px',
-             height: '40px',
-             borderRadius: '50%',
-             backgroundColor: 'var(--accent)',
-             display: 'flex',
-             alignItems: 'center',
-             justifyContent: 'center',
-             color: '#000',
-             transform: isHovered ? 'scale(1)' : 'scale(0.8)',
-             transition: 'transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)',
-             paddingLeft: '2px' // optical alignment for play icon
-           }}>
-             <svg width="20" height="20" viewBox="0 0 256 256" fill="currentColor">
-               <path d="M228.23,116.34L68.23,20.34C58.33,14.41,45.83,14.34,35.88,20.21C25.92,26.07,19.78,36.57,19.78,48v160c0,11.43,6.14,21.93,16.1,27.79c4.95,2.92,10.42,4.39,15.91,4.39c5.6,0,11.16-1.52,16.19-4.52l159.99-96c9.74-5.85,15.71-16.19,15.71-27.52S237.97,122.18,228.23,116.34z" />
-             </svg>
-           </div>
-        </div>
+        <span className="media-card-play" aria-hidden="true">
+          <Play size={14} weight="fill" />
+        </span>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' }}>
-        <div style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text-primary)', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {track.title || track.path.split(/[\\/]/).pop()?.replace(/\.[^/.]+$/, '') || 'Unknown'}
-        </div>
-        <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontWeight: 500, width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {track.artist || 'Unknown Artist'}
-        </div>
+      <div className="media-card-meta">
+        <span className="media-card-title" title={title}>{title}</span>
+        <span className="media-card-subtitle" title={track.artist || 'Unknown artist'}>
+          {track.artist || 'Unknown artist'}
+          {ext ? ` · ${ext}` : ''}
+        </span>
       </div>
-    </div>
+    </button>
   );
 };
 
-export function HomeView() {
+const ArtistCard = ({ artist, count, onClick }: { artist: string; count: number; onClick: () => void }) => (
+  <button className="artist-card" onClick={onClick} title={`View ${artist}`}>
+    <span className="artist-card-art">
+      <span className="artist-card-initial">{artist.charAt(0).toUpperCase()}</span>
+    </span>
+    <span className="artist-card-name" title={artist}>{artist}</span>
+    <span className="artist-card-meta">{count} {count === 1 ? 'song' : 'songs'}</span>
+  </button>
+);
+
+export function HomeView({ onScanFolder }: { onScanFolder?: () => void } = {}) {
   const { tracks } = useLibraryStore();
-  const { play } = usePlayerStore();
+  const playDiscover = usePlayerStore(s => s.playDiscover);
+  const playContext = usePlayerStore(s => s.playContext);
   const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
   const [editingTrack, setEditingTrack] = useState<Track | null>(null);
 
-  const { topArtists, recentlyPlayed, recentlyAdded } = useMemo(() => {
-    // Top Artists
+  const { topArtists, recentlyPlayed, recentlyAdded, summary, greeting } = useMemo(() => {
     const artistCounts: Record<string, number> = {};
+    const albumSet = new Set<string>();
+
     for (const t of tracks) {
       if (t.artist && t.artist.toLowerCase() !== 'unknown artist') {
         artistCounts[t.artist] = (artistCounts[t.artist] || 0) + 1;
       }
+      if (t.album) {
+        albumSet.add(t.album);
+      }
     }
+
     const topArtists = Object.entries(artistCounts)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 12)
+      .slice(0, 10)
       .map(([artist, count]) => ({ artist, count }));
 
-    // Recently Played
     const recentlyPlayed = [...tracks]
       .filter(t => t.last_played)
       .sort((a, b) => (b.last_played || 0) - (a.last_played || 0))
-      .slice(0, 12);
+      .slice(0, 10);
 
-    // Recently Added
     const recentlyAdded = [...tracks]
       .filter(t => t.mtime)
       .sort((a, b) => (b.mtime || 0) - (a.mtime || 0))
-      .slice(0, 12);
+      .filter(t => !recentlyPlayed.some(p => p.id === t.id))
+      .slice(0, 10);
 
-    return { topArtists, recentlyPlayed, recentlyAdded };
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+    return {
+      topArtists,
+      recentlyPlayed,
+      recentlyAdded,
+      greeting,
+      summary: {
+        artists: Object.keys(artistCounts).length,
+        albums: albumSet.size,
+      },
+    };
   }, [tracks]);
 
   if (tracks.length === 0) {
-    return <div className="empty-library-state">No tracks found. Try scanning a folder!</div>;
+    return (
+      <div className="view-container">
+        <div className="empty-view">
+          <div className="empty-view-icon">
+            <Disc size={28} />
+          </div>
+          <h2 className="empty-view-title">Your library is empty</h2>
+          <p className="empty-view-text">
+            Add a folder of music to get started.
+          </p>
+          {onScanFolder && (
+            <button className="btn-primary" onClick={onScanFolder}>
+              <Plus size={14} weight="bold" />
+              <span>Add music folder</span>
+            </button>
+          )}
+        </div>
+      </div>
+    );
   }
-
-  const hour = new Date().getHours();
-  let greeting = 'Good evening';
-  if (hour < 12) greeting = 'Good morning';
-  else if (hour < 18) greeting = 'Good afternoon';
-
-  const gridStyle: React.CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, 160px)',
-    gap: '24px',
-    justifyContent: 'space-between'
-  };
 
   if (selectedArtist) {
     const artistTracks = tracks.filter(t => t.artist === selectedArtist);
     return (
-      <div className="view-container" style={{ overflowY: 'auto' }}>
-        <div className="view-header" style={{ paddingBottom: '0' }}>
-          <button
-            onClick={() => setSelectedArtist(null)}
-            style={{ background: 'transparent', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', marginBottom: '8px', padding: 0, fontSize: '14px' }}
-          >
-            ← Back to Home
-          </button>
-          <h2 style={{ fontSize: '32px', fontWeight: 800, margin: '8px 0 24px', color: 'var(--text-primary)' }}>{selectedArtist}</h2>
-        </div>
+      <div className="view-container home-view" style={{ overflowY: 'auto' }}>
+        <header className="page-header">
+          <div className="page-header-text">
+            <button className="back-link" onClick={() => setSelectedArtist(null)}>
+              <ArrowLeft size={13} weight="bold" />
+              <span>Back</span>
+            </button>
+            <h1 className="page-title">{selectedArtist}</h1>
+            <p className="page-subtitle">
+              {artistTracks.length} {artistTracks.length === 1 ? 'song' : 'songs'}
+            </p>
+          </div>
+          <div className="page-header-actions">
+            <button
+              className="btn-primary"
+              onClick={() => playContext(artistTracks, 0, { contextLabel: selectedArtist || 'Artist' })}
+            >
+              <Play size={13} weight="fill" />
+              <span>Play all</span>
+            </button>
+          </div>
+        </header>
+
         <div className="view-content track-list">
           {artistTracks.map((track, i) => (
-            <TrackRow key={track.id} track={track} index={i} onPlay={() => play(track)} onEdit={() => setEditingTrack(track)} />
+            <TrackRow 
+              key={track.id} 
+              track={track} 
+              index={i} 
+              onPlay={() => playDiscover(track)} 
+              onEdit={() => setEditingTrack(track)} 
+            />
           ))}
         </div>
+
         {editingTrack && (
           <TagEditor
             track={editingTrack}
@@ -256,54 +177,92 @@ export function HomeView() {
   }
 
   return (
-    <div className="view-container" style={{ overflowY: 'auto' }}>
-      <div className="view-header" style={{ paddingBottom: '0' }}>
-        <h2 style={{ fontSize: '32px', fontWeight: 800, margin: '24px 0', color: 'var(--text-primary)' }}>
-          {greeting}
-        </h2>
-      </div>
-      <div className="view-content" style={{ display: 'flex', flexDirection: 'column', gap: '48px', paddingBottom: '48px', paddingTop: '12px' }}>
+    <div className="view-container home-view" style={{ overflowY: 'auto' }}>
+      <header className="page-header">
+        <div className="page-header-text">
+          <h1 className="page-title">{greeting}</h1>
+          <p className="page-subtitle">
+            {tracks.length} {tracks.length === 1 ? 'song' : 'songs'}
+            {summary.artists > 0 ? ` · ${summary.artists} ${summary.artists === 1 ? 'artist' : 'artists'}` : ''}
+            {summary.albums > 0 ? ` · ${summary.albums} ${summary.albums === 1 ? 'album' : 'albums'}` : ''}
+          </p>
+        </div>
+        <div className="page-header-actions">
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              const shuffled = [...tracks].sort(() => 0.5 - Math.random());
+              playContext(shuffled, 0, { contextLabel: 'Shuffle' });
+            }}
+          >
+            <Shuffle size={13} weight="bold" />
+            <span>Shuffle library</span>
+          </button>
+          {onScanFolder && (
+            <button className="btn-secondary" onClick={onScanFolder} title="Add a music folder">
+              <Plus size={13} weight="bold" />
+              <span>Add folder</span>
+            </button>
+          )}
+        </div>
+      </header>
 
-        {topArtists.length > 0 && (
-          <section>
-            <h3 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: 'var(--text-primary)' }}>
-              Your Artists
-            </h3>
-            <div style={gridStyle}>
-              {topArtists.map((a, i) => (
-                <ArtistCard key={i} artist={a.artist} count={a.count} onClick={() => setSelectedArtist(a.artist)} />
-              ))}
-            </div>
-          </section>
-        )}
-
+      <div className="home-sections">
         {recentlyPlayed.length > 0 && (
-          <section>
-            <h3 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: 'var(--text-primary)' }}>
-              Recently Played
-            </h3>
-            <div style={gridStyle}>
+          <section className="home-section">
+            <div className="section-heading">
+              <h2>Recently played</h2>
+              <span className="section-count">{recentlyPlayed.length}</span>
+            </div>
+            <div className="media-grid">
               {recentlyPlayed.map((track) => (
-                <TrackCard key={`recent-${track.id}`} track={track} onClick={() => play(track)} />
+                <MediaCard
+                  key={`recent-${track.id}`}
+                  track={track}
+                  onClick={() => playDiscover(track)}
+                />
               ))}
             </div>
           </section>
         )}
 
         {recentlyAdded.length > 0 && (
-          <section>
-            <h3 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: 'var(--text-primary)' }}>
-              Recently Added
-            </h3>
-            <div style={gridStyle}>
+          <section className="home-section">
+            <div className="section-heading">
+              <h2>Recently added</h2>
+              <span className="section-count">{recentlyAdded.length}</span>
+            </div>
+            <div className="media-grid">
               {recentlyAdded.map((track) => (
-                <TrackCard key={`added-${track.id}`} track={track} onClick={() => play(track)} />
+                <MediaCard
+                  key={`added-${track.id}`}
+                  track={track}
+                  onClick={() => playDiscover(track)}
+                />
               ))}
             </div>
           </section>
         )}
 
+        {topArtists.length > 0 && (
+          <section className="home-section">
+            <div className="section-heading">
+              <h2>Your artists</h2>
+            </div>
+            <div className="artist-grid">
+              {topArtists.map((a) => (
+                <ArtistCard
+                  key={a.artist}
+                  artist={a.artist}
+                  count={a.count}
+                  onClick={() => setSelectedArtist(a.artist)}
+                />
+              ))}
+            </div>
+          </section>
+        )}
       </div>
+
       {editingTrack && (
         <TagEditor
           track={editingTrack}

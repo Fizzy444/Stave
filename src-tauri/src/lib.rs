@@ -6,13 +6,13 @@ pub mod metadata;
 pub mod scanner;
 pub mod tools;
 
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::sync::Mutex;
-use std::collections::HashMap;
 use tauri::http::header::{
     ACCEPT_RANGES, ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, RANGE,
 };
@@ -21,6 +21,67 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, WindowEvent,
 };
+
+fn asset_mime_for_path(path: &Path) -> &'static str {
+    let ext = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    match ext.as_str() {
+        "webp" => "image/webp",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "svg" => "image/svg+xml",
+        "avif" => "image/avif",
+        "mp3" => "audio/mpeg",
+        "m4a" | "mp4" | "alac" => "audio/mp4",
+        "aac" => "audio/aac",
+        "flac" => "audio/flac",
+        "wav" | "wave" => "audio/wav",
+        "ogg" | "oga" | "opus" => "audio/ogg",
+        "aif" | "aiff" => "audio/aiff",
+        "wma" => "audio/x-ms-wma",
+        _ => "application/octet-stream",
+    }
+}
+
+fn parse_asset_range(header: &str, file_size: u64) -> Result<(u64, u64), ()> {
+    if file_size == 0 {
+        return Err(());
+    }
+
+    let value = header.trim().strip_prefix("bytes=").ok_or(())?;
+    let (start_raw, end_raw) = value.split_once('-').ok_or(())?;
+
+    let (start, end) = if start_raw.is_empty() {
+        let suffix: u64 = end_raw.trim().parse().map_err(|_| ())?;
+        if suffix == 0 {
+            return Err(());
+        }
+        let length = suffix.min(file_size);
+        (file_size - length, file_size - 1)
+    } else {
+        let start: u64 = start_raw.trim().parse().map_err(|_| ())?;
+        let end = if end_raw.trim().is_empty() {
+            file_size - 1
+        } else {
+            end_raw
+                .trim()
+                .parse::<u64>()
+                .map_err(|_| ())?
+                .min(file_size - 1)
+        };
+        (start, end)
+    };
+
+    if start > end || start >= file_size {
+        Err(())
+    } else {
+        Ok((start, end))
+    }
+}
 
 fn handle_asset_request(
     request: &Request<Vec<u8>>,
@@ -39,7 +100,7 @@ fn handle_asset_request(
 
     let path = Path::new(&path_str);
 
-    if !path.exists() {
+    if !path.exists() || !path.is_file() {
         return Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
@@ -49,32 +110,31 @@ fn handle_asset_request(
     let mut file = File::open(path)?;
     let metadata = file.metadata()?;
     let file_size = metadata.len();
+    let is_head = request.method().as_str() == "HEAD";
 
     let mut response = Response::builder()
         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .header(ACCEPT_RANGES, "bytes")
-        .header(CONTENT_TYPE, "audio/mpeg");
+        .header(CONTENT_TYPE, asset_mime_for_path(path))
+        // Artwork filenames are content hashes, so the browser can safely reuse them.
+        .header("Cache-Control", "public, max-age=86400");
 
     if let Some(range_header) = request.headers().get(RANGE) {
         let range_str = range_header.to_str()?;
-        let range_val = range_str.replace("bytes=", "");
-        let ranges: Vec<&str> = range_val.split('-').collect();
-
-        let start: u64 = if !ranges[0].is_empty() {
-            ranges[0].parse()?
-        } else {
-            0
-        };
-
-        let end: u64 = if ranges.len() > 1 && !ranges[1].is_empty() {
-            ranges[1].parse()?
-        } else {
-            file_size - 1
+        let (start, end) = match parse_asset_range(range_str, file_size) {
+            Ok(range) => range,
+            Err(()) => {
+                return Ok(Response::builder()
+                    .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                    .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                    .header(ACCEPT_RANGES, "bytes")
+                    .header(CONTENT_RANGE, format!("bytes */{}", file_size))
+                    .body(vec![])?);
+            }
         };
 
         let chunk_size = end - start + 1;
         let mut buffer = vec![0; chunk_size as usize];
-
         file.seek(SeekFrom::Start(start))?;
         file.read_exact(&mut buffer)?;
 
@@ -86,10 +146,12 @@ fn handle_asset_request(
             )
             .header(CONTENT_LENGTH, chunk_size.to_string());
 
-        Ok(response.body(buffer)?)
+        Ok(response.body(if is_head { vec![] } else { buffer })?)
     } else {
         let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer)?;
+        if !is_head {
+            file.read_to_end(&mut buffer)?;
+        }
 
         response = response
             .status(StatusCode::OK)
@@ -100,20 +162,37 @@ fn handle_asset_request(
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--minimized"]),
-        ))
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        ));
+
+    // In debug/dev builds, allow multiple instances so tests/refresh work cleanly;
+    // in release, enforce single instance.
+    #[cfg(not(debug_assertions))]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.show();
                 let _ = w.set_focus();
             }
-        }))
+        }));
+    }
+    #[cfg(debug_assertions)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }));
+    }
+
+    builder
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::library::scan_library,
@@ -134,6 +213,8 @@ pub fn run() {
             commands::spotify::fetch_spotify_playlist,
             commands::spotify::spotify_connect,
             lyrics::fetch_lyrics,
+            lyrics::fetch_lyrics_from_provider,
+            lyrics::get_lyrics_providers,
             tools::check_tools,
             tools::download_tools,
             commands::playlists::create_playlist,
@@ -141,6 +222,21 @@ pub fn run() {
             commands::playlists::add_to_playlist,
             commands::playlists::get_playlist_tracks,
             commands::playlists::remove_from_playlist,
+            commands::ytmusic::yt_search,
+            commands::ytmusic::yt_get_explore,
+            commands::ytmusic::yt_get_radio,
+            commands::ytmusic::yt_get_playlist,
+            commands::ytmusic::yt_get_account_playlists,
+            commands::ytmusic::yt_get_stream_url,
+            commands::ytmusic::media_proxy_base_url,
+            commands::yt_auth::yt_auth_start_browser,
+            commands::yt_auth::yt_auth_sync_browser_cookies,
+            commands::yt_auth::yt_auth_get_account,
+            commands::yt_auth::yt_auth_refresh_account_profile,
+            commands::yt_auth::yt_auth_logout,
+            commands::yt_auth::yt_auth_open_browser_url,
+            commands::yt_auth::yt_auth_open_login_window,
+            commands::yt_auth::yt_auth_save_custom_account,
         ])
         .register_uri_scheme_protocol("asset", move |_app, request| {
             handle_asset_request(&request).unwrap_or_else(|e| {
@@ -154,7 +250,22 @@ pub fn run() {
             let app_data_dir = app.path().app_data_dir().unwrap();
             let conn = db::init(app_data_dir).expect("Failed to initialize db");
             app.manage(std::sync::Arc::new(Mutex::new(conn)));
-            app.manage(std::sync::Arc::new(Mutex::new(HashMap::<String, tauri::async_runtime::JoinHandle<()>>::new())));
+            app.manage(std::sync::Arc::new(Mutex::new(HashMap::<
+                String,
+                tauri::async_runtime::JoinHandle<()>,
+            >::new())));
+
+            // Start the local streaming proxy before the frontend can request a stream.
+            // yt-dlp is optional at startup; download it in the background for fallback
+            // stream resolution without delaying window creation.
+            let app_handle = app.handle().clone();
+            let proxy_handle = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                commands::ytmusic::start_stream_proxy(proxy_handle).await;
+            });
+            tauri::async_runtime::spawn(async move {
+                tools::ensure_yt_dlp(&app_handle).await;
+            });
 
             use tauri::menu::{Menu, MenuItem};
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -183,8 +294,26 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                // Keep the main app in the tray, but let auxiliary windows (including
+                // the YouTube sign-in WebView) close normally so their media is stopped.
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                } else if window.label() == "yt_login" {
+                    // Capture the embedded YouTube session before destroying its WebView.
+                    // The cookie API must run asynchronously on Windows to avoid a WebView2 deadlock.
+                    api.prevent_close();
+                    let app_handle = window.app_handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Some(login_window) = app_handle.get_webview_window("yt_login") {
+                            commands::yt_auth::finalize_yt_login_session(
+                                &app_handle,
+                                &login_window,
+                            )
+                            .await;
+                        }
+                    });
+                }
             }
         })
         .build(tauri::generate_context!())

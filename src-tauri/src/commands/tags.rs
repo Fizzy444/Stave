@@ -5,8 +5,10 @@ use reqwest;
 use rusqlite::Connection;
 use serde::Deserialize;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{AppHandle, Manager, State};
+use futures_util::stream::{self, StreamExt};
+use std::time::Duration;
 
 #[derive(Deserialize)]
 struct ItunesResponse {
@@ -77,123 +79,128 @@ pub async fn auto_fix_metadata(
         iter.filter_map(Result::ok).collect()
     };
 
-    let mut updated_count = 0;
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    let client = CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(12))
+            .user_agent("Stave Music/0.1")
+            .pool_max_idle_per_host(12)
+            .build()
+            .expect("metadata HTTP client")
+    }).clone();
+    let app_dir = app_handle.path().app_data_dir().map_err(|e| e.to_string())?;
 
-    for (id, path, mut title, mut artist) in tracks {
-        if title.is_none()
-            || title.as_deref() == Some("")
-            || artist.is_none()
-            || artist.as_deref() == Some("")
-        {
-            let (g_title, g_artist) = guess_metadata_from_path(&path);
-            if title.is_none() || title.as_deref() == Some("") {
-                title = g_title;
-            }
-            if artist.is_none() || artist.as_deref() == Some("") {
-                artist = g_artist;
-            }
-        }
+    let updated = stream::iter(tracks)
+        .map(|(id, path, title, artist)| {
+            let db = db_arc.clone();
+            let client = client.clone();
+            let app_dir = app_dir.clone();
+            async move {
+                let (mut title, mut artist) = (title, artist);
+                if title.as_deref().unwrap_or("").trim().is_empty()
+                    || artist.as_deref().unwrap_or("").trim().is_empty()
+                {
+                    let (guessed_title, guessed_artist) = guess_metadata_from_path(&path);
+                    if title.as_deref().unwrap_or("").trim().is_empty() { title = guessed_title; }
+                    if artist.as_deref().unwrap_or("").trim().is_empty() { artist = guessed_artist; }
+                }
 
-        let mut cover_bytes = None;
-        let mut searched_title = title.clone();
-        let mut searched_artist = artist.clone();
-
-        if let (Some(ref t), Some(ref a)) = (&title, &artist) {
-            let query = format!("{} {}", t, a);
-            let url = format!(
-                "https://itunes.apple.com/search?term={}&entity=song&limit=1",
-                urlencoding::encode(&query)
-            );
-            if let Ok(res) = reqwest::get(&url).await {
-                if let Ok(json) = res.json::<ItunesResponse>().await {
-                    if let Some(first) = json.results.first() {
-                        if let Some(rt) = &first.track_name {
-                            searched_title = Some(rt.clone());
-                        }
-                        if let Some(ra) = &first.artist_name {
-                            searched_artist = Some(ra.clone());
-                        }
-
-                        if let Some(art) = &first.artwork_url_100 {
-                            let high_res = art.replace("100x100bb", "600x600bb");
-                            if let Ok(img_res) = reqwest::get(&high_res).await {
-                                if let Ok(bytes) = img_res.bytes().await {
-                                    cover_bytes = Some(bytes.to_vec());
+                let mut cover_bytes = None;
+                let mut result_title = title.clone();
+                let mut result_artist = artist.clone();
+                if let (Some(t), Some(a)) = (&title, &artist) {
+                    if let Some(found) = lookup_itunes(&client, t, a).await {
+                        result_title = found.track_name.clone().or(result_title);
+                        result_artist = found.artist_name.clone().or(result_artist);
+                        if let Some(url) = found.artwork_url_100 {
+                            let high_res = url.replace("100x100bb", "1000x1000bb");
+                            for artwork_url in [high_res.as_str(), url.as_str()] {
+                                if let Ok(response) = client.get(artwork_url).send().await {
+                                    if response.status().is_success() {
+                                        if let Ok(bytes) = response.bytes().await {
+                                            if !bytes.is_empty() {
+                                                cover_bytes = Some(bytes.to_vec());
+                                                break;
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
+
+                tokio::task::spawn_blocking(move || -> bool {
+                    let path_obj = Path::new(&path);
+                    if !path_obj.exists() { return false; }
+                    let mut tagged_file = match lofty::read_from_path(path_obj) {
+                        Ok(file) => file,
+                        Err(_) => return false,
+                    };
+                    let tag = match tagged_file.primary_tag_mut() {
+                        Some(tag) => tag,
+                        None => {
+                            let tag_type = tagged_file.primary_tag_type();
+                            tagged_file.insert_tag(Tag::new(tag_type));
+                            tagged_file.primary_tag_mut().unwrap()
+                        }
+                    };
+                    if let Some(value) = &result_title { tag.set_title(value.clone()); }
+                    if let Some(value) = &result_artist { tag.set_artist(value.clone()); }
+                    if let Some(bytes) = &cover_bytes {
+                        tag.remove_picture_type(lofty::picture::PictureType::CoverFront);
+                        if let Ok(mut picture) = lofty::picture::Picture::from_reader(&mut std::io::Cursor::new(bytes.clone())) {
+                            picture.set_pic_type(lofty::picture::PictureType::CoverFront);
+                            tag.push_picture(picture);
+                        }
+                    }
+                    if tag.save_to_path(path_obj, lofty::config::WriteOptions::new()).is_err() { return false; }
+
+                    let artwork = cover_bytes.as_ref().and_then(|bytes| ArtworkProcessor::new(&app_dir).process(bytes));
+                    let conn = db.lock().unwrap();
+                    if let Some((hash, accent)) = artwork {
+                        conn.execute(
+                            "UPDATE tracks SET title = ?, artist = ?, art_hash = ?, accent = ? WHERE id = ?",
+                            rusqlite::params![result_title, result_artist, hash, accent, id],
+                        ).is_ok()
+                    } else {
+                        conn.execute(
+                            "UPDATE tracks SET title = ?, artist = ? WHERE id = ?",
+                            rusqlite::params![result_title, result_artist, id],
+                        ).is_ok()
+                    }
+                }).await.unwrap_or(false)
             }
-        }
+        })
+        .buffer_unordered(6)
+        .filter(|ok| futures_util::future::ready(*ok))
+        .count()
+        .await;
 
-        let path_clone = path.clone();
-        let db_clone = db_arc.clone();
-        let app_dir = app_handle.path().app_data_dir().unwrap();
+    Ok(updated as u32)
+}
 
-        let success = tokio::task::spawn_blocking(move || -> Result<bool, String> {
-            let path_obj = Path::new(&path_clone);
-            if !path_obj.exists() { return Ok(false); }
-            let mut tagged_file = match lofty::read_from_path(path_obj) {
-                Ok(f) => f,
-                Err(_) => return Ok(false)
-            };
-            
-            let tag = match tagged_file.primary_tag_mut() {
-                Some(t) => t,
-                None => {
-                    let tag_type = tagged_file.primary_tag_type();
-                    tagged_file.insert_tag(Tag::new(tag_type));
-                    tagged_file.primary_tag_mut().unwrap()
-                }
-            };
-            
-            if let Some(ref t) = searched_title { tag.set_title(t.clone()); }
-            if let Some(ref a) = searched_artist { tag.set_artist(a.clone()); }
-            
-            if let Some(bytes) = &cover_bytes {
-                tag.remove_picture_type(lofty::picture::PictureType::CoverFront);
-                if let Ok(mut pic) = lofty::picture::Picture::from_reader(&mut std::io::Cursor::new(bytes.clone())) {
-                    pic.set_pic_type(lofty::picture::PictureType::CoverFront);
-                    tag.push_picture(pic);
-                }
-            }
-            tag.save_to_path(path_obj, lofty::config::WriteOptions::new()).ok();
-            
-            let mut new_hash = None;
-            let mut new_accent = None;
-            
-            if cover_bytes.is_some() {
-                let processor = ArtworkProcessor::new(&app_dir);
-                if let Some((hash, acc)) = processor.process(cover_bytes.as_ref().unwrap()) {
-                    new_hash = Some(hash);
-                    new_accent = Some(acc);
-                }
-            }
-            
-            let conn = db_clone.lock().unwrap();
-            if cover_bytes.is_some() {
-                conn.execute(
-                    "UPDATE tracks SET title = ?, artist = ?, art_hash = ?, accent = ? WHERE id = ?",
-                    rusqlite::params![searched_title, searched_artist, new_hash, new_accent, id]
-                ).ok();
-            } else {
-                conn.execute(
-                    "UPDATE tracks SET title = ?, artist = ? WHERE id = ?",
-                    rusqlite::params![searched_title, searched_artist, id]
-                ).ok();
-            }
-            Ok(true)
-        }).await.unwrap_or(Ok(false)).unwrap_or(false);
+fn normalize_match(value: &str) -> String {
+    value.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect()
+}
 
-        if success {
-            updated_count += 1;
-        }
-
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    }
-
-    Ok(updated_count)
+async fn lookup_itunes(client: &reqwest::Client, title: &str, artist: &str) -> Option<ItunesResult> {
+    let query = format!("{} {}", title, artist);
+    let url = format!(
+        "https://itunes.apple.com/search?term={}&entity=song&limit=25",
+        urlencoding::encode(&query)
+    );
+    let response = client.get(url).send().await.ok()?.error_for_status().ok()?;
+    let results = response.json::<ItunesResponse>().await.ok()?.results;
+    let wanted_title = normalize_match(title);
+    let wanted_artist = normalize_match(artist);
+    results.into_iter().map(|item| {
+        let result_title = normalize_match(item.track_name.as_deref().unwrap_or(""));
+        let result_artist = normalize_match(item.artist_name.as_deref().unwrap_or(""));
+        let title_score = if result_title == wanted_title { 4 } else if result_title.contains(&wanted_title) || wanted_title.contains(&result_title) { 2 } else { 0 };
+        let artist_score = if result_artist == wanted_artist { 4 } else if result_artist.contains(&wanted_artist) || wanted_artist.contains(&result_artist) { 2 } else { 0 };
+        (item, title_score + artist_score)
+    }).filter(|(_, score)| *score >= 2).max_by_key(|(_, score)| *score).map(|(item, _)| item)
 }
 
 #[tauri::command]
@@ -212,14 +219,14 @@ pub async fn update_track_tags(
         if !t.is_empty() && !a.is_empty() {
             let query = format!("{} {}", t, a);
             let url = format!(
-                "https://itunes.apple.com/search?term={}&entity=song&limit=1",
+                "https://itunes.apple.com/search?term={}&entity=song&limit=25",
                 urlencoding::encode(&query)
             );
             if let Ok(res) = reqwest::get(&url).await {
                 if let Ok(json) = res.json::<ItunesResponse>().await {
                     if let Some(first) = json.results.first() {
                         if let Some(art) = &first.artwork_url_100 {
-                            let high_res = art.replace("100x100bb", "600x600bb");
+                            let high_res = art.replace("100x100bb", "1000x1000bb");
                             if let Ok(img_res) = reqwest::get(&high_res).await {
                                 if let Ok(bytes) = img_res.bytes().await {
                                     cover_bytes = Some(bytes.to_vec());

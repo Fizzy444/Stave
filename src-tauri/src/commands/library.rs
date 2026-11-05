@@ -61,8 +61,7 @@ pub async fn scan_library(
     }
 
     tauri::async_runtime::spawn_blocking(move || {
-        let conn = db_clone.lock().unwrap();
-        scanner::scan_folder(&PathBuf::from(path), &app_clone, &conn);
+        scanner::scan_folder(&PathBuf::from(path), &app_clone, &db_clone);
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -80,14 +79,13 @@ pub async fn rescan_library(
         let iter = stmt.query_map([], |row| row.get(0)).unwrap();
         iter.filter_map(|r| r.ok()).collect()
     };
-    
+
     let db_clone = db.inner().clone();
     let app_clone = app.clone();
-    
+
     tauri::async_runtime::spawn_blocking(move || {
-        let conn = db_clone.lock().unwrap();
         for path in folders {
-            scanner::scan_folder(&PathBuf::from(path), &app_clone, &conn);
+            scanner::scan_folder(&PathBuf::from(path), &app_clone, &db_clone);
         }
     })
     .await
@@ -98,7 +96,7 @@ pub async fn rescan_library(
 #[tauri::command]
 pub fn get_tracks(db: State<'_, Arc<Mutex<Connection>>>) -> Result<Vec<Track>, String> {
     let conn = db.lock().unwrap();
-    let mut stmt = conn.prepare_cached("SELECT id, path, title, artist, album_artist, album, track_no, disc_no, duration_ms, art_hash, accent, mtime, play_count, last_played, favorite FROM tracks").unwrap();
+    let mut stmt = conn.prepare_cached("SELECT id, path, title, artist, album_artist, album, track_no, disc_no, duration_ms, art_hash, accent, mtime, play_count, last_played, favorite FROM tracks ORDER BY id ASC").unwrap();
     let iter = stmt
         .query_map([], |row| {
             Ok(Track {

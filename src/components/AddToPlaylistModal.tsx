@@ -35,46 +35,41 @@ export function AddToPlaylistModal({ track, onClose }: Props) {
     }
   };
 
+  const title = track.title || track.path.split(/[\\/]/).pop() || '';
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+      <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <ListPlus size={20} /> Add to Playlist
-          </h3>
-          <button className="btn-icon" onClick={onClose}><X size={16} /></button>
-        </div>
-
-        <div className="modal-body">
-          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-            Adding: <strong style={{ color: 'var(--text-primary)' }}>{track.title || track.path.split(/[\\/]/).pop()}</strong>
-          </p>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
-            {playlists.map(p => (
-              <button
-                key={p.id}
-                disabled={isAdding}
-                onClick={() => handleAdd(p.id)}
-                style={{
-                  background: 'var(--surface-hover)', color: 'var(--text-primary)', padding: '12px 16px',
-                  border: 'none', borderRadius: '4px', fontWeight: 500, cursor: 'pointer', textAlign: 'left',
-                  display: 'flex', alignItems: 'center', gap: '12px'
-                }}
-              >
-                <ListPlus size={16} />
-                {p.name}
-              </button>
-            ))}
-            {playlists.length === 0 && (
-              <div style={{ color: 'var(--text-tertiary)', fontSize: '13px', textAlign: 'center', padding: '16px' }}>
-                No playlists available. Create one in the Playlists tab.
-              </div>
-            )}
+          <div>
+            <h3 className="modal-title">Add to playlist</h3>
+            <p className="modal-subtitle" title={title}>{title}</p>
           </div>
-
-          {error && <div style={{ color: '#f87171', fontSize: '13px', marginTop: '16px' }}>{error}</div>}
+          <button className="btn-icon" onClick={onClose} aria-label="Close">
+            <X size={16} />
+          </button>
         </div>
+
+        <div className="playlist-pick-list">
+          {playlists.map(p => (
+            <button
+              key={p.id}
+              className="playlist-pick-item"
+              disabled={isAdding}
+              onClick={() => handleAdd(p.id)}
+            >
+              <ListPlus size={15} />
+              <span>{p.name}</span>
+            </button>
+          ))}
+          {playlists.length === 0 && (
+            <div className="playlist-pick-empty">
+              No playlists yet. Create one from the Playlists page.
+            </div>
+          )}
+        </div>
+
+        {error && <div className="move-error">{error}</div>}
       </div>
     </div>
   );

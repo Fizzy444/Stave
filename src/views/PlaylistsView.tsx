@@ -1,9 +1,26 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ListPlus, Trash, Plus, Heart, Play, Shuffle } from '@phosphor-icons/react';
+import {
+  ListPlus,
+  Trash,
+  Plus,
+  Heart,
+  Play,
+  Shuffle,
+  YoutubeLogo,
+  ArrowsClockwise,
+  ArrowSquareOut
+} from '@phosphor-icons/react';
 import { Track, useLibraryStore } from '../store/library';
 import { usePlayerStore } from '../store/player';
+import { useYTAuthStore } from '../store/ytauth';
+import {
+  ytItemToTrack,
+  YTLibraryPlaylist
+} from '../store/ytmusic';
+import { useMetadataStore } from '../store/metadata';
 import { TrackRow } from '../components/TrackRow';
+import { getHighResThumbnail, handleThumbnailError } from '../utils/thumbnail';
 
 interface Playlist {
   id: number;
@@ -11,14 +28,42 @@ interface Playlist {
   created_at: number;
 }
 
-export function PlaylistsView() {
+export type ActivePlaylistSelection =
+  | { kind: 'local'; playlist: Playlist }
+  | { kind: 'yt'; playlist: YTLibraryPlaylist };
+
+interface PlaylistsViewProps {
+  onOpenOnlinePlaylist?: (playlistId: string) => void;
+}
+
+export function PlaylistsView({ onOpenOnlinePlaylist }: PlaylistsViewProps = {}) {
   const { tracks } = useLibraryStore();
-  const { playContext } = usePlayerStore();
-  
+  const playContext = usePlayerStore(s => s.playContext);
+  const account = useYTAuthStore((state) => state.account);
+  const openAccountModal = useYTAuthStore((state) => state.openModal);
+
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
-  const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
+  const [selected, setSelected] = useState<ActivePlaylistSelection>({
+    kind: 'local',
+    playlist: { id: -1, name: 'Liked Songs', created_at: 0 },
+  });
   const [playlistTracks, setPlaylistTracks] = useState<Track[]>([]);
-  
+
+  // Metadata store for YouTube playlists and details
+  const accountPlaylistsCache = useMetadataStore((s) => s.playlists);
+  const fetchAccountPlaylists = useMetadataStore((s) => s.fetchAccountPlaylists);
+  const playlistDetailsCache = useMetadataStore((s) => s.playlistDetails);
+  const fetchPlaylistDetails = useMetadataStore((s) => s.fetchPlaylistDetails);
+
+  const ytPlaylists = accountPlaylistsCache.data || [];
+  const ytPlaylistsLoading = Boolean(accountPlaylistsCache.loading && !accountPlaylistsCache.data);
+
+  // YouTube playlist details when a YT playlist is active
+  const currentYtCache = selected.kind === 'yt' ? playlistDetailsCache[selected.playlist.playlist_id] : null;
+  const ytDetails = currentYtCache?.data || null;
+  const isYtLoading = Boolean(selected.kind === 'yt' && currentYtCache?.loading && !ytDetails);
+  const ytError = selected.kind === 'yt' ? currentYtCache?.error : null;
+
   const [isCreating, setIsCreating] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
 
@@ -26,9 +71,6 @@ export function PlaylistsView() {
     try {
       const p: Playlist[] = await invoke('get_playlists');
       setPlaylists(p);
-      if (!selectedPlaylist) {
-        setSelectedPlaylist({ id: -1, name: 'Liked Songs', created_at: 0 });
-      }
     } catch (e) {
       console.error(e);
     }
@@ -38,25 +80,52 @@ export function PlaylistsView() {
     fetchPlaylists();
   }, []);
 
+  // Load YouTube account playlists for the sidebar rail
   useEffect(() => {
-    if (selectedPlaylist) {
-      loadPlaylistTracks(selectedPlaylist.id);
-    }
-  }, [selectedPlaylist, tracks]);
+    if (!account?.is_authenticated) return;
+    fetchAccountPlaylists();
+  }, [account?.is_authenticated, account?.channel_id, account?.name, fetchAccountPlaylists]);
 
-  const loadPlaylistTracks = async (id: number) => {
-    if (id === -1) {
-      setPlaylistTracks(tracks.filter(t => t.favorite));
-      return;
+  // Keep playlistTracks in sync with ytDetails when a YouTube playlist is selected
+  useEffect(() => {
+    if (selected.kind === 'yt') {
+      if (ytDetails) {
+        setPlaylistTracks(ytDetails.tracks.map(ytItemToTrack));
+      } else {
+        setPlaylistTracks([]);
+      }
     }
-    try {
-      const trackIds: number[] = await invoke('get_playlist_tracks', { playlistId: id });
-      const mapped = trackIds.map(tid => tracks.find(t => t.id === tid)).filter(Boolean) as Track[];
-      setPlaylistTracks(mapped);
-    } catch (e) {
-      console.error(e);
+  }, [selected.kind, ytDetails]);
+
+  // Load tracks when selected playlist changes
+  useEffect(() => {
+    let cancelled = false;
+
+    if (selected.kind === 'local') {
+      if (selected.playlist.id === -1) {
+        setPlaylistTracks(tracks.filter((t) => t.favorite));
+      } else {
+        invoke<number[]>('get_playlist_tracks', { playlistId: selected.playlist.id })
+          .then((trackIds) => {
+            if (cancelled) return;
+            const mapped = trackIds
+              .map((tid) => tracks.find((t) => t.id === tid))
+              .filter(Boolean) as Track[];
+            setPlaylistTracks(mapped);
+          })
+          .catch((e) => {
+            if (!cancelled) console.error(e);
+          });
+      }
+    } else {
+      // Selected a YouTube playlist
+      fetchPlaylistDetails(selected.playlist.playlist_id);
     }
-  };
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, tracks, fetchPlaylistDetails]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,7 +133,7 @@ export function PlaylistsView() {
     try {
       const p: Playlist = await invoke('create_playlist', { name: newPlaylistName.trim() });
       await fetchPlaylists();
-      setSelectedPlaylist(p);
+      setSelected({ kind: 'local', playlist: p });
       setIsCreating(false);
       setNewPlaylistName('');
     } catch (e) {
@@ -72,155 +141,361 @@ export function PlaylistsView() {
     }
   };
 
-  const handleRemoveTrack = async (trackId: number) => {
-    if (!selectedPlaylist) return;
+  const handleRemoveTrack = async (trackId: number | string) => {
+    if (selected.kind !== 'local' || selected.playlist.id === -1) return;
     try {
-      await invoke('remove_from_playlist', { playlistId: selectedPlaylist.id, trackId });
-      loadPlaylistTracks(selectedPlaylist.id);
+      await invoke('remove_from_playlist', { playlistId: selected.playlist.id, trackId });
+      const trackIds: number[] = await invoke('get_playlist_tracks', {
+        playlistId: selected.playlist.id,
+      });
+      const mapped = trackIds
+        .map((tid) => tracks.find((t) => t.id === tid))
+        .filter(Boolean) as Track[];
+      setPlaylistTracks(mapped);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDeletePlaylist = async () => {
+    if (selected.kind !== 'local' || selected.playlist.id === -1) return;
+    if (!window.confirm(`Delete playlist "${selected.playlist.name}"?`)) return;
+    try {
+      await invoke('delete_playlist', { playlistId: selected.playlist.id });
+      await fetchPlaylists();
+      setSelected({ kind: 'local', playlist: { id: -1, name: 'Liked Songs', created_at: 0 } });
     } catch (e) {
       console.error(e);
     }
   };
 
   return (
-    <div className="view-container" style={{ display: 'flex', flexDirection: 'row', padding: 0 }}>
+    <div className="playlists-layout">
       {/* Playlists Sidebar */}
-      <div style={{ width: '250px', borderRight: '1px solid var(--divider)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '24px', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: '20px', color: 'var(--text-primary)' }}>Playlists</h2>
-          <button className="btn-icon" onClick={() => setIsCreating(!isCreating)}><Plus size={16} /></button>
+      <div className="playlists-rail">
+        <div className="playlists-rail-header">
+          <h2 className="playlists-rail-title">Playlists</h2>
+          <button className="btn-icon" onClick={() => setIsCreating(!isCreating)} title="Create playlist">
+            <Plus size={15} />
+          </button>
         </div>
 
         {isCreating && (
-          <div style={{ padding: '0 24px 16px 24px' }}>
-            <form onSubmit={handleCreate} style={{ display: 'flex', gap: '8px' }}>
+          <div className="playlists-create">
+            <form onSubmit={handleCreate}>
               <input
                 autoFocus
                 className="form-input"
-                placeholder="Name..."
+                placeholder="Playlist name…"
                 value={newPlaylistName}
                 onChange={(e) => setNewPlaylistName(e.target.value)}
-                style={{ flex: 1, padding: '6px 12px' }}
               />
             </form>
           </div>
         )}
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px' }}>
-          <div
-            onClick={() => setSelectedPlaylist({ id: -1, name: 'Liked Songs', created_at: 0 })}
-            style={{
-              padding: '12px',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              marginBottom: '16px',
-              backgroundColor: selectedPlaylist?.id === -1 ? 'var(--surface-selected)' : 'transparent',
-              color: selectedPlaylist?.id === -1 ? 'var(--text-primary)' : 'var(--text-secondary)',
-              fontWeight: selectedPlaylist?.id === -1 ? 600 : 500,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px'
-            }}
+        <div className="playlists-rail-scroll">
+          {/* Liked Songs */}
+          <button
+            className={`playlist-rail-item ${selected.kind === 'local' && selected.playlist.id === -1 ? 'active' : ''}`}
+            onClick={() => setSelected({ kind: 'local', playlist: { id: -1, name: 'Liked Songs', created_at: 0 } })}
           >
-            <div style={{ width: 28, height: 28, borderRadius: 4, background: 'linear-gradient(135deg, #4f46e5, #ec4899)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
-              <Heart size={16} weight="fill" />
+            <span className="playlist-rail-icon liked">
+              <Heart size={14} weight="fill" />
+            </span>
+            <span className="playlist-rail-name">Liked Songs</span>
+          </button>
+
+          {/* Local Playlists */}
+          {playlists.length > 0 && (
+            <div className="playlists-rail-group-label">
+              <span>Your playlists</span>
             </div>
-            Liked Songs
-          </div>
+          )}
 
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 12 }}>
-            Your Playlists
-          </div>
-
-          {playlists.map(p => (
-            <div
+          {playlists.map((p) => (
+            <button
               key={p.id}
-              onClick={() => setSelectedPlaylist(p)}
-              style={{
-                padding: '12px',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                marginBottom: '4px',
-                backgroundColor: selectedPlaylist?.id === p.id ? 'var(--surface-selected)' : 'transparent',
-                color: selectedPlaylist?.id === p.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-                fontWeight: selectedPlaylist?.id === p.id ? 600 : 500,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px'
-              }}
+              className={`playlist-rail-item ${selected.kind === 'local' && selected.playlist.id === p.id ? 'active' : ''}`}
+              onClick={() => setSelected({ kind: 'local', playlist: p })}
             >
-              <ListPlus size={18} />
-              {p.name}
-            </div>
+              <span className="playlist-rail-icon">
+                <ListPlus size={14} />
+              </span>
+              <span className="playlist-rail-name">{p.name}</span>
+            </button>
           ))}
+
+          {/* YouTube Music Playlists Section */}
+          <div className="playlists-rail-group-label" style={{ marginTop: 8 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <YoutubeLogo size={13} weight="fill" color="#ef4444" />
+              YouTube Music
+            </span>
+            {account?.is_authenticated && ytPlaylistsLoading && (
+              <span className="playlists-rail-group-meta">Loading…</span>
+            )}
+          </div>
+
+          {account?.is_authenticated ? (
+            <>
+              <div className="yt-account-row">
+                {account.avatar_url ? (
+                  <img
+                    className="yt-account-avatar"
+                    src={getHighResThumbnail(account.avatar_url) || account.avatar_url}
+                    alt=""
+                    onError={handleThumbnailError}
+                  />
+                ) : (
+                  <div className="yt-account-avatar-fallback">
+                    {(account.name || '?').charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="yt-account-info">
+                  <div className="yt-account-name">
+                    {account.name || 'YouTube Music'}
+                  </div>
+                  {account.channel_title && (
+                    <div className="yt-account-handle">
+                      {account.channel_title}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {ytPlaylists.map((pl) => {
+                const isActive = selected.kind === 'yt' && selected.playlist.playlist_id === pl.playlist_id;
+                return (
+                  <button
+                    key={pl.playlist_id}
+                    className={`yt-rail-item ${isActive ? 'active' : ''}`}
+                    onClick={() => setSelected({ kind: 'yt', playlist: pl })}
+                    title={pl.title}
+                  >
+                    <span className="yt-rail-thumb">
+                      {pl.thumbnail_url ? (
+                        <img
+                          src={getHighResThumbnail(pl.thumbnail_url) || ''}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          onError={handleThumbnailError}
+                        />
+                      ) : (
+                        <YoutubeLogo size={14} />
+                      )}
+                    </span>
+                    <span className="yt-rail-title">{pl.title}</span>
+                  </button>
+                );
+              })}
+
+              {!ytPlaylistsLoading && ytPlaylists.length === 0 && (
+                <div className="yt-rail-empty">
+                  No YouTube Music playlists found.
+                </div>
+              )}
+            </>
+          ) : (
+            <button
+              className="yt-connect-btn"
+              onClick={openAccountModal}
+            >
+              Connect YouTube Music to see your playlists
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Playlist Content */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {selectedPlaylist ? (
+      {/* Playlist Content (Right Pane) */}
+      <div className="playlist-main">
+        {selected.kind === 'local' ? (
           <>
-            <div style={{ padding: '32px', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-              <div>
-                <h1 style={{ margin: 0, fontSize: '32px', color: 'var(--text-primary)' }}>{selectedPlaylist.name}</h1>
-                <div style={{ color: 'var(--text-tertiary)', marginTop: '8px' }}>
-                  {playlistTracks.length} tracks
+            <div className="playlist-hero">
+              <div className={`playlist-hero-art ${selected.playlist.id === -1 ? 'liked' : ''}`}>
+                {selected.playlist.id === -1 ? (
+                  <Heart size={44} weight="fill" />
+                ) : (
+                  <ListPlus size={44} />
+                )}
+              </div>
+              <div className="playlist-hero-info">
+                <div className="playlist-hero-eyebrow">Playlist</div>
+                <h1 className="playlist-hero-title">{selected.playlist.name}</h1>
+                <div className="playlist-hero-meta">{playlistTracks.length} songs</div>
+                <div className="playlist-hero-actions">
+                  <button
+                    className="playlist-hero-play"
+                    onClick={() => playlistTracks.length > 0 && playContext(playlistTracks, 0, { contextLabel: selected.playlist.name })}
+                    disabled={playlistTracks.length === 0}
+                  >
+                    <Play size={14} weight="fill" />
+                    <span>Play</span>
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    onClick={() => {
+                      if (playlistTracks.length === 0) return;
+                      playContext([...playlistTracks].sort(() => 0.5 - Math.random()), 0, { contextLabel: selected.playlist.name });
+                    }}
+                    disabled={playlistTracks.length === 0}
+                  >
+                    <Shuffle size={13} weight="bold" />
+                    <span>Shuffle</span>
+                  </button>
+                  {selected.playlist.id !== -1 && (
+                    <button
+                      className="btn-icon"
+                      onClick={handleDeletePlaylist}
+                      title="Delete playlist"
+                      style={{ marginLeft: 'auto', width: 32, height: 32 }}
+                    >
+                      <Trash size={15} />
+                    </button>
+                  )}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button 
-                  className="btn-secondary" 
-                  onClick={() => playlistTracks.length > 0 && playContext(playlistTracks, 0)}
-                  style={{ padding: '8px 16px', gap: '8px', color: 'var(--text-primary)' }}
-                >
-                  <Play size={16} weight="fill" />
-                  <span style={{ fontWeight: 600 }}>Play All</span>
-                </button>
-                <button 
-                  className="btn-secondary" 
-                  onClick={() => {
-                    if (playlistTracks.length === 0) return;
-                    const shuffled = [...playlistTracks].sort(() => 0.5 - Math.random());
-                    playContext(shuffled, 0);
-                  }}
-                  style={{ padding: '8px 16px', gap: '8px', color: 'var(--text-primary)' }}
-                >
-                  <Shuffle size={16} weight="bold" />
-                  <span style={{ fontWeight: 600 }}>Shuffle</span>
-                </button>
-              </div>
             </div>
-            
-            <div style={{ flex: 1, overflowY: 'auto', padding: '0 32px 32px 32px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+
+            <div className="playlist-tracks">
+              <div className="playlist-tracklist">
                 {playlistTracks.map((track, i) => (
-                  <div key={`${track.id}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ flex: 1 }}>
-                      <TrackRow track={track} index={i} onPlay={() => playContext(playlistTracks, i)} onEdit={() => {}} />
-                    </div>
-                    {selectedPlaylist.id !== -1 && (
-                      <button 
-                        className="btn-icon" 
+                  <div key={`${track.id}-${i}`} className="playlist-track-wrap">
+                    <TrackRow
+                      track={track}
+                      index={i}
+                      onPlay={() => playContext(playlistTracks, i, { contextLabel: selected.playlist.name })}
+                      onEdit={() => {}}
+                    />
+                    {selected.playlist.id !== -1 && (
+                      <button
+                        className="btn-icon playlist-remove-btn"
                         onClick={() => handleRemoveTrack(track.id)}
                         title="Remove from playlist"
                       >
-                        <Trash size={16} />
+                        <Trash size={15} />
                       </button>
                     )}
                   </div>
                 ))}
                 {playlistTracks.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-tertiary)' }}>
-                    This playlist is empty.
-                  </div>
+                  <div className="playlist-empty">No songs in this playlist yet.</div>
                 )}
               </div>
             </div>
           </>
         ) : (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)' }}>
-            Select or create a playlist
-          </div>
+          /* YouTube Playlist in right pane */
+          <>
+            <div className="playlist-hero">
+              <div className="playlist-hero-art">
+                {ytDetails?.thumbnail_url || selected.playlist.thumbnail_url ? (
+                  <img
+                    className="playlist-hero-cover-img"
+                    src={getHighResThumbnail(ytDetails?.thumbnail_url || selected.playlist.thumbnail_url) || ''}
+                    alt=""
+                    decoding="async"
+                    onError={handleThumbnailError}
+                  />
+                ) : (
+                  <YoutubeLogo size={44} weight="fill" color="#ef4444" />
+                )}
+              </div>
+              <div className="playlist-hero-info">
+                <div className="playlist-hero-eyebrow">
+                  <YoutubeLogo size={12} weight="fill" color="#ef4444" style={{ marginRight: 4, verticalAlign: -1 }} />
+                  YouTube Music
+                </div>
+                <h1 className="playlist-hero-title">{ytDetails?.title || selected.playlist.title}</h1>
+                <div className="playlist-hero-meta">
+                  {ytDetails?.author && <span>{ytDetails.author} • </span>}
+                  <span>{isYtLoading ? 'Loading tracks…' : `${playlistTracks.length} songs`}</span>
+                </div>
+                <div className="playlist-hero-actions">
+                  <button
+                    className="playlist-hero-play"
+                    onClick={() => playlistTracks.length > 0 && playContext(playlistTracks, 0, { contextLabel: ytDetails?.title || selected.playlist.title })}
+                    disabled={playlistTracks.length === 0}
+                  >
+                    <Play size={14} weight="fill" />
+                    <span>Play</span>
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    onClick={() => {
+                      if (playlistTracks.length === 0) return;
+                      playContext([...playlistTracks].sort(() => 0.5 - Math.random()), 0, { contextLabel: ytDetails?.title || selected.playlist.title });
+                    }}
+                    disabled={playlistTracks.length === 0}
+                  >
+                    <Shuffle size={13} weight="bold" />
+                    <span>Shuffle</span>
+                  </button>
+                  {onOpenOnlinePlaylist && (
+                    <button
+                      className="btn-secondary"
+                      onClick={() => onOpenOnlinePlaylist(selected.playlist.playlist_id)}
+                      title="View playlist page"
+                      style={{ marginLeft: 'auto', gap: 4 }}
+                    >
+                      <ArrowSquareOut size={13} />
+                      <span>View playlist</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="playlist-tracks">
+              {isYtLoading ? (
+                <div className="playlist-loading-skeleton" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '12px 0' }}>
+                  {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                    <div
+                      key={i}
+                      className="shimmer-pulse"
+                      style={{
+                        height: 40,
+                        background: 'var(--surface-element)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--border-subtle)',
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : ytError ? (
+                <div className="playlist-empty" style={{ color: '#ef4444', flexDirection: 'column', gap: 8 }}>
+                  <span>{ytError}</span>
+                  <button
+                    className="btn-secondary"
+                    onClick={() => {
+                      if (selected.kind === 'yt') {
+                        fetchPlaylistDetails(selected.playlist.playlist_id, true);
+                      }
+                    }}
+                    style={{ fontSize: 11 }}
+                  >
+                    <ArrowsClockwise size={13} /> Retry
+                  </button>
+                </div>
+              ) : playlistTracks.length === 0 ? (
+                <div className="playlist-empty">No songs in this YouTube Music playlist.</div>
+              ) : (
+                <div className="playlist-tracklist">
+                  {playlistTracks.map((track, i) => (
+                    <div key={`${track.id}-${i}`} className="playlist-track-wrap">
+                      <TrackRow
+                        track={track}
+                        index={i}
+                        onPlay={() => playContext(playlistTracks, i, { contextLabel: ytDetails?.title || selected.playlist.title })}
+                        onEdit={() => {}}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>

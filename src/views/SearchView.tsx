@@ -1,187 +1,319 @@
+import { useShallow } from 'zustand/react/shallow';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchStore } from '../store/search';
-import { usePlayerStore } from '../store/player';
-import { getArtworkUrl, Track } from '../store/library';
-import { Disc, Plus, Clock, PencilSimple } from '@phosphor-icons/react';
-import { useState } from 'react';
-import { TagEditor } from '../components/TagEditor';
-import { ContextMenu } from '../components/ContextMenu';
+import { usePlayerStore, prefetchTrackOnHover } from '../store/player';
+import {
+  ytItemToTrack,
+  YTTrackItem
+} from '../store/ytmusic';
+import { useMetadataStore } from '../store/metadata';
+import { getHighResThumbnail, handleThumbnailError } from '../utils/thumbnail';
+import {
+  Plus,
+  Clock,
+  Play,
+  Pause,
+  DownloadSimple,
+  Check,
+  Link,
+  CircleNotch,
+  MusicNote
+} from '@phosphor-icons/react';
+import { invoke } from '@tauri-apps/api/core';
+import { ContextMenu, ContextMenuItem } from '../components/ContextMenu';
 
-const formatDate = (secs: number) => {
-  const d = new Date(secs * 1000);
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-};
-
-const formatDuration = (ms: number) => {
-  const minutes = Math.floor(ms / 60000);
-  const seconds = Math.floor((ms % 60000) / 1000);
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+const formatDurationSecs = (secs: number) => {
+  if (!secs || isNaN(secs)) return '--:--';
+  const minutes = Math.floor(secs / 60);
+  const remaining = Math.floor(secs % 60);
+  return `${minutes}:${remaining.toString().padStart(2, '0')}`;
 };
 
 export function SearchView() {
-  const { query, results, isSearching } = useSearchStore();
-  const { playContext, queue, currentIndex, isPlaying, addToQueue } = usePlayerStore();
-  const [editingTrack, setEditingTrack] = useState<Track | null>(null);
-  const [contextMenu, setContextMenu] = useState<{x: number, y: number, track: Track} | null>(null);
+  const { query } = useSearchStore();
+  const { playDiscover, queue, currentIndex, isPlaying, addToQueue, playNext, pause, resume } = usePlayerStore(useShallow(s => ({
+    playDiscover: s.playDiscover,
+    queue: s.queue,
+    currentIndex: s.currentIndex,
+    isPlaying: s.isPlaying,
+    addToQueue: s.addToQueue,
+    playNext: s.playNext,
+    pause: s.pause,
+    resume: s.resume,
+  })));
 
-  const currentTrackId = currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex].id : null;
+  const [ytFilter, setYtFilter] = useState<'all' | 'songs' | 'videos' | 'albums'>('all');
+
+  const searchCache = useMetadataStore((s) => s.search);
+  const fetchSearch = useMetadataStore((s) => s.fetchSearch);
+
+  const normalizedFilter = ytFilter === 'all' ? '' : ytFilter;
+  const searchKey = `${query.trim().toLowerCase()}|${normalizedFilter}`;
+  const currentSearchCache = query.trim() ? searchCache[searchKey] : null;
+  const ytResults = currentSearchCache?.data || [];
+  const isYtSearching = Boolean(currentSearchCache?.loading && !currentSearchCache?.data);
+  const ytError = currentSearchCache?.error || null;
+
+  // Context Menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    ytItem: YTTrackItem;
+    index: number;
+  } | null>(null);
+
+  // Download feedback set
+  const [downloadedIds, setDownloadedIds] = useState<Set<string>>(new Set());
+
+  const currentTrack = currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
+  const cleanCurrentId = String(currentTrack?.path || currentTrack?.id || '').replace(/^(yt:|yt_)/, '');
+
+  const ytSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (ytSearchTimeoutRef.current) {
+      clearTimeout(ytSearchTimeoutRef.current);
+    }
+
+    if (!query.trim()) {
+      return;
+    }
+
+    ytSearchTimeoutRef.current = setTimeout(() => {
+      const filterParam = ytFilter === 'all' ? undefined : ytFilter;
+      fetchSearch(query.trim(), filterParam);
+    }, 200);
+
+    return () => {
+      if (ytSearchTimeoutRef.current) {
+        clearTimeout(ytSearchTimeoutRef.current);
+      }
+    };
+  }, [query, ytFilter, fetchSearch]);
+
+  const handlePlayYtTrack = (item: YTTrackItem) => {
+    const cleanId = item.id.replace(/^(yt:|yt_)/, '');
+    if (cleanId === cleanCurrentId) {
+      if (isPlaying) {
+        pause();
+      } else {
+        resume();
+      }
+      return;
+    }
+
+    playDiscover(ytItemToTrack(item));
+  };
+
+  const handleDownloadYtTrack = async (item: YTTrackItem, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const cleanId = item.id.replace(/^(yt:|yt_)/, '');
+    try {
+      await invoke('queue_download', {
+        id: cleanId,
+        title: item.title,
+        artist: item.artist
+      });
+      setDownloadedIds((prev) => new Set(prev).add(cleanId));
+      setTimeout(() => {
+        setDownloadedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(cleanId);
+          return next;
+        });
+      }, 3000);
+    } catch (err) {
+      console.error('Failed to queue download:', err);
+    }
+  };
+
+  const getContextMenuItems = (): ContextMenuItem[] => {
+    if (!contextMenu) return [];
+    const { ytItem } = contextMenu;
+    const cleanId = ytItem.id.replace(/^(yt:|yt_)/, '');
+    const isCurrentPlaying = cleanId === cleanCurrentId && isPlaying;
+
+    return [
+      {
+        label: isCurrentPlaying ? 'Pause' : 'Play',
+        icon: isCurrentPlaying ? <Pause size={16} /> : <Play size={16} />,
+        onClick: () => handlePlayYtTrack(ytItem)
+      },
+      {
+        label: 'Play next',
+        icon: <Play size={16} />,
+        onClick: () => playNext(ytItemToTrack(ytItem))
+      },
+      {
+        label: 'Add to queue',
+        icon: <Plus size={16} />,
+        onClick: () => addToQueue(ytItemToTrack(ytItem))
+      },
+      { divider: true, label: '', onClick: () => {} },
+      {
+        label: downloadedIds.has(cleanId) ? 'Download queued' : 'Download',
+        icon: downloadedIds.has(cleanId) ? <Check size={16} /> : <DownloadSimple size={16} />,
+        onClick: () => handleDownloadYtTrack(ytItem)
+      },
+      {
+        label: 'Copy link',
+        icon: <Link size={16} />,
+        onClick: () => {
+          navigator.clipboard?.writeText(`https://youtube.com/watch?v=${cleanId}`);
+        }
+      }
+    ];
+  };
 
   return (
-    <div className="view-container" style={{ display: 'flex', flexDirection: 'column' }}>
-      <div className="view-header" style={{ paddingBottom: '24px', flexShrink: 0 }}>
-        <h2 style={{ fontSize: '28px', fontWeight: 700, margin: 0, color: 'var(--text-primary)', letterSpacing: '-0.5px' }}>
-          Search Results
-        </h2>
-        <div style={{ fontSize: '13px', color: 'var(--text-tertiary)', fontWeight: 500, marginTop: '6px' }}>
-          {isSearching ? 'Searching...' : `Found ${results.length} results for "${query}"`}
+    <div className="view-container search-view">
+      <header className="page-header">
+        <div className="page-header-text">
+          <p className="page-kicker">YouTube Music</p>
+          <h1 className="page-title">{query.trim() ? 'Search results' : 'Search'}</h1>
+          <p className="page-subtitle">
+            {!query.trim()
+              ? 'Use the search bar above to find songs.'
+              : isYtSearching
+              ? 'Searching…'
+              : `${ytResults.length} ${ytResults.length === 1 ? 'result' : 'results'} for “${query}”`}
+          </p>
         </div>
-      </div>
+        <div className="page-header-actions">
+          <div className="search-filter-chips">
+            {(['all', 'songs', 'videos', 'albums'] as const).map((filter) => (
+              <button
+                key={filter}
+                className={`search-filter-chip ${ytFilter === filter ? 'active' : ''}`}
+                onClick={() => setYtFilter(filter)}
+              >
+                {filter === 'all' ? 'All' : filter.charAt(0).toUpperCase() + filter.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </header>
 
-      <div className="view-content" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 0 }}>
-
-        {results.length > 0 && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '40px minmax(200px, 2fr) minmax(150px, 1.5fr) minmax(100px, 1fr) 50px',
-            gap: '16px',
-            padding: '0 16px',
-            margin: '0 16px 8px 16px',
-            height: '36px',
-            alignItems: 'center',
-            backgroundColor: 'rgba(255, 255, 255, 0.03)',
-            borderRadius: '4px',
-            fontSize: '11px',
-            color: 'var(--text-tertiary)',
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing: '1px',
-            flexShrink: 0
-          }}>
-            <div style={{ textAlign: 'center' }}>#</div>
-            <div style={{ paddingLeft: '52px' }}>TITLE</div>
-            <div>ALBUM</div>
-            <div>DATE ADDED</div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-              <Clock size={14} />
-            </div>
+      <div className="view-content search-content">
+        {isYtSearching && (
+          <div className="inline-loading">
+            <CircleNotch size={18} className="spinning-icon" />
+            <span>Searching…</span>
           </div>
         )}
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px', paddingBottom: '32px' }}>
-          {results.length === 0 && !isSearching && (
-            <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-tertiary)' }}>
-              No tracks found matching "{query}"
-            </div>
-          )}
-          {results.map((track, i) => {
-            const isCurrent = currentTrackId === track.id;
-            const isThisPlaying = isCurrent && isPlaying;
-            const title = track.title || track.path.split(/[\\/]/).pop()?.replace(/\.[^/.]+$/, '') || 'Unknown Title';
+        {!isYtSearching && ytResults.length === 0 && query.trim() !== '' && (
+          <div className="inline-empty">
+            {ytError ? ytError : `No songs found for “${query}”. Try a different search.`}
+          </div>
+        )}
 
-            return (
-              <div
-                key={track.id}
-                className={`library-row ${isCurrent ? 'is-active' : ''}`}
-                onClick={() => playContext(results, i)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setContextMenu({ x: e.clientX, y: e.clientY, track });
-                }}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '40px minmax(200px, 2fr) minmax(150px, 1.5fr) minmax(100px, 1fr) 50px',
-                  gap: '16px',
-                  alignItems: 'center',
-                  height: '56px',
-                  borderRadius: '6px',
-                  padding: '0 16px',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.2s',
-                  backgroundColor: isCurrent ? 'var(--surface-selected)' : 'transparent',
-                }}
-                onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.backgroundColor = 'var(--surface-hover)' }}
-                onMouseLeave={(e) => { if (!isCurrent) e.currentTarget.style.backgroundColor = 'transparent' }}
-              >
-                <div style={{ textAlign: 'center', fontSize: '14px', color: isCurrent ? 'var(--accent)' : 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
-                  {isThisPlaying ? '▶' : i + 1}
-                </div>
+        {!isYtSearching && !query.trim() && (
+          <div className="inline-empty">Start typing to search YouTube Music.</div>
+        )}
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                  <div style={{ width: '40px', height: '40px', flexShrink: 0, borderRadius: '4px', overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {track.art_hash ? <img src={getArtworkUrl(track.art_hash) || ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Disc size={20} color="var(--text-tertiary)" />}
-                  </div>
-                  <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px' }}>
-                    <div style={{ fontWeight: 600, fontSize: '14px', color: isCurrent ? 'var(--accent)' : 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {title}
-                    </div>
-                    <div style={{ fontSize: '13px', color: 'var(--text-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {track.artist || 'Unknown Artist'}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {track.album || ''}
-                </div>
-
-                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {track.mtime ? formatDate(track.mtime) : ''}
-                </div>
-
-                <div style={{ fontSize: '13px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); addToQueue(track); }}
-                    style={{ background: 'transparent', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 0 }}
-                    title="Add to Up Next"
-                  >
-                    <Plus size={14} />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setEditingTrack(track); }}
-                    style={{ background: 'transparent', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 0 }}
-                    title="Edit Metadata"
-                  >
-                    <PencilSimple size={14} />
-                  </button>
-                  <div style={{ width: '35px', textAlign: 'right' }}>
-                    {track.duration_ms ? formatDuration(track.duration_ms) : '--:--'}
-                  </div>
-                </div>
+        {!isYtSearching && ytResults.length > 0 && (
+          <>
+            <div className="search-table-header">
+              <div className="search-col-index">#</div>
+              <div className="search-col-title">Title</div>
+              <div className="search-col-artist">Artist</div>
+              <div className="search-col-actions">
+                <Clock size={13} />
               </div>
-            );
-          })}
-        </div>
-      </div>
+            </div>
 
-      {editingTrack && (
-        <TagEditor
-          track={editingTrack}
-          onClose={() => setEditingTrack(null)}
-        />
-      )}
+            <div className="search-results">
+              {ytResults.map((item, i) => {
+                const cleanId = item.id.replace(/^(yt:|yt_)/, '');
+                const isCurrent = cleanId === cleanCurrentId;
+                const isThisPlaying = isCurrent && isPlaying;
+                const isDownloaded = downloadedIds.has(cleanId);
+                const thumbUrl = getHighResThumbnail(item.thumbnail_url) || `https://i.ytimg.com/vi/${cleanId}/hq720.jpg`;
+
+                return (
+                  <div
+                    key={item.id + i}
+                    className={`search-row ${isCurrent ? 'is-active' : ''}`}
+                    onClick={() => handlePlayYtTrack(item)}
+                    onMouseEnter={() => prefetchTrackOnHover(ytItemToTrack(item))}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        ytItem: item,
+                        index: i
+                      });
+                    }}
+                  >
+                    <div className="search-col-index">
+                      {isThisPlaying ? (
+                        <Pause size={13} weight="fill" />
+                      ) : isCurrent ? (
+                        <Play size={13} weight="fill" />
+                      ) : (
+                        i + 1
+                      )}
+                    </div>
+
+                    <div className="search-title-cell">
+                      <div className="search-thumb">
+                        {thumbUrl ? (
+                          <img
+                            src={thumbUrl}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            onError={handleThumbnailError}
+                          />
+                        ) : (
+                          <MusicNote size={18} />
+                        )}
+                      </div>
+                      <div className="search-title-text" title={item.title}>{item.title}</div>
+                    </div>
+
+                    <div className="search-col-artist" title={item.artist}>{item.artist}</div>
+
+                    <div className="search-col-actions">
+                      <button
+                        className="btn-icon"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          addToQueue(ytItemToTrack(item));
+                        }}
+                        title="Add to queue"
+                      >
+                        <Plus size={15} />
+                      </button>
+
+                      <button
+                        className="btn-icon"
+                        onClick={(e) => handleDownloadYtTrack(item, e)}
+                        title={isDownloaded ? 'Queued for download' : 'Download'}
+                      >
+                        {isDownloaded ? <Check size={15} /> : <DownloadSimple size={15} />}
+                      </button>
+
+                      <span className="search-duration">
+                        {formatDurationSecs(item.duration_secs)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
 
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
-          items={[
-            {
-              label: 'Play',
-              icon: <Disc size={16} />,
-              onClick: () => playContext(results, results.findIndex(t => t.id === contextMenu.track.id))
-            },
-            {
-              label: 'Add to Up Next',
-              icon: <Plus size={16} />,
-              onClick: () => addToQueue(contextMenu.track)
-            },
-            { divider: true, label: '', onClick: () => {} },
-            {
-              label: 'Edit Metadata...',
-              icon: <PencilSimple size={16} />,
-              onClick: () => setEditingTrack(contextMenu.track)
-            }
-          ]}
+          items={getContextMenuItems()}
         />
       )}
     </div>

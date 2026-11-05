@@ -1,7 +1,9 @@
 import React from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { Track, getArtworkUrl } from '../store/library';
+import { handleThumbnailError } from '../utils/thumbnail';
 import { Play, Pause, PencilSimple, Plus, Disc, Heart } from '@phosphor-icons/react';
-import { usePlayerStore } from '../store/player';
+import { usePlayerStore, prefetchTrackOnHover } from '../store/player';
 import { useLibraryStore } from '../store/library';
 import { ContextMenu } from './ContextMenu';
 import { useState } from 'react';
@@ -15,22 +17,36 @@ interface TrackRowProps {
 }
 
 export const TrackRow = React.memo(function TrackRow({ track, index, onPlay, onEdit, style }: TrackRowProps) {
-  const { queue, currentIndex, isPlaying, pause, resume, addToQueue } = usePlayerStore();
+  const { currentTrackId, isPlaying, pause, resume, addToQueue } = usePlayerStore(useShallow(s => ({
+    currentTrackId: s.currentIndex >= 0 ? s.queue[s.currentIndex]?.id ?? null : null,
+    isPlaying: s.isPlaying,
+    pause: s.pause,
+    resume: s.resume,
+    addToQueue: s.addToQueue,
+  })));
   const toggleFavorite = useLibraryStore(s => s.toggleFavorite);
 
-  const currentTrack = currentIndex >= 0 ? queue[currentIndex] : null;
-  const isCurrent = currentTrack?.id === track.id;
+  const isCurrent = currentTrackId === track.id;
   const isThisPlaying = isCurrent && isPlaying;
   
   const [contextMenu, setContextMenu] = useState<{x: number, y: number} | null>(null);
 
-  const title = track.title || (track.path.split(/[\\/]/).pop()?.replace(/\.[^/.]+$/, '') || 'Unknown Title');
-  const artist = track.artist || 'Unknown Artist';
-  const album = track.album || 'Unknown Album';
+  const isYt = track.source === 'youtube'
+    || (track.path != null && track.path.startsWith('yt:'))
+    || (typeof track.id === 'string' && track.id.startsWith('yt_'));
+
+  const title = track.title || (isYt ? 'YouTube track' : (track.path.split(/[\\/]/).pop()?.replace(/\.[^/.]+$/, '') || 'Unknown title'));
+  const artist = track.artist || 'Unknown artist';
+  const album = isYt ? '' : (track.album || 'Unknown album');
 
   const minutes = track.duration_ms ? Math.floor(track.duration_ms / 60000) : 0;
   const seconds = track.duration_ms ? Math.floor((track.duration_ms % 60000) / 1000) : 0;
   const durationStr = track.duration_ms ? `${minutes}:${seconds.toString().padStart(2, '0')}` : '--:--';
+
+  const ext = isYt
+    ? null
+    : (track.path && !track.path.startsWith('http') ? (track.path.split('.').pop()?.toUpperCase() || 'PCM') : null);
+  const isLossless = ext ? ['FLAC', 'WAV', 'ALAC', 'AIFF'].includes(ext) : false;
 
   const handlePlayToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -51,6 +67,7 @@ export const TrackRow = React.memo(function TrackRow({ track, index, onPlay, onE
         className={`track-row ${isCurrent ? 'is-active' : ''}`}
         style={style}
         onClick={() => onPlay(track)}
+        onMouseEnter={() => prefetchTrackOnHover(track)}
         onContextMenu={(e) => {
           e.preventDefault();
           setContextMenu({ x: e.clientX, y: e.clientY });
@@ -62,18 +79,33 @@ export const TrackRow = React.memo(function TrackRow({ track, index, onPlay, onE
           {isThisPlaying ? '▶' : index + 1}
         </span>
         <button className="track-play-btn" onClick={handlePlayToggle} title={isThisPlaying ? 'Pause' : 'Play'}>
-          {isThisPlaying ? <Pause size={13} weight="fill" /> : <Play size={13} weight="fill" />}
+          {isThisPlaying ? <Pause size={12} weight="fill" /> : <Play size={12} weight="fill" />}
         </button>
       </div>
 
       {/* Title & Artwork */}
       <div className="track-title-block">
         <div className="track-thumb">
-          {track.art_hash ? <img src={getArtworkUrl(track.art_hash) || ''} alt="" style={{width:'100%', height:'100%', objectFit:'cover', borderRadius:'4px'}} /> : <Disc size={16} />}
+          {track.art_hash ? (
+            <img
+              src={getArtworkUrl(track.art_hash) || ''}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              onError={handleThumbnailError}
+            />
+          ) : (
+            <Disc size={13} />
+          )}
         </div>
-        <div className="track-title-text" title={title}>
+        <span className="track-title-text" title={title}>
           {title}
-        </div>
+        </span>
+        {ext && (
+          <span className={`track-fmt-tag ${isLossless ? 'lossless' : ''}`}>
+            {ext}
+          </span>
+        )}
       </div>
 
       {/* Artist */}
@@ -90,14 +122,14 @@ export const TrackRow = React.memo(function TrackRow({ track, index, onPlay, onE
       <div className="track-actions-cell">
         <button
           className="btn-icon"
-          style={{ width: 26, height: 26, color: track.favorite ? '#ef4444' : undefined }}
+          style={{ width: 22, height: 22, color: track.favorite ? 'var(--accent-clip)' : undefined }}
           onClick={(e) => {
             e.stopPropagation();
             toggleFavorite(track.id, !track.favorite);
           }}
           title={track.favorite ? "Unlike" : "Like"}
         >
-          <Heart size={14} weight={track.favorite ? 'fill' : 'regular'} />
+          <Heart size={12} weight={track.favorite ? 'fill' : 'regular'} />
         </button>
       </div>
 
@@ -119,13 +151,13 @@ export const TrackRow = React.memo(function TrackRow({ track, index, onPlay, onE
             onClick: () => onPlay(track)
           },
           {
-            label: 'Add to Up Next',
+            label: 'Add to queue',
             icon: <Plus size={16} />,
             onClick: () => addToQueue(track)
           },
           { divider: true, label: '', onClick: () => {} },
           {
-            label: 'Edit Metadata...',
+            label: 'Edit song info…',
             icon: <PencilSimple size={16} />,
             onClick: () => onEdit(track)
           }
